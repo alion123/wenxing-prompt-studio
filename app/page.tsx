@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
-import { ArrowUpRight, ArrowRight, ArrowLeft, Plus, Sparkles, Code2, Image as ImageIcon, Video, PenLine, WandSparkles, Check, ChevronDown, Copy, Download, History, Trash2, RotateCcw, X, CircleHelp, SlidersHorizontal, ShieldCheck, LoaderCircle, CheckCheck, MessageCircle, Layers, Lightbulb } from 'lucide-react';
+import { ArrowUpRight, ArrowRight, ArrowLeft, Plus, Sparkles, Code2, Image as ImageIcon, Video, PenLine, WandSparkles, Check, ChevronDown, Copy, Download, History, Trash2, RotateCcw, X, CircleHelp, SlidersHorizontal, ShieldCheck, LoaderCircle, CheckCheck, MessageCircle, Layers, Lightbulb, Star } from 'lucide-react';
 import { createProject, addVersion, restoreVersion, makeContext, resumeQuestionRound, answerFor, type Kind, type Project, type Question, type Generation } from '@/lib/studio';
 import { parseWorkspace } from '@/lib/persistence';
 import {attachAssessment} from '@/lib/reports';
@@ -16,6 +16,8 @@ import {BackupImport} from '@/components/studio/BackupImport';
 import {createRequestLifecycle} from '@/lib/request-lifecycle';
 import {StepReview} from '@/components/studio/StepReview';
 import {ReferenceImages} from '@/components/studio/ReferenceImages';
+import {FavoriteLibrary} from '@/components/studio/FavoriteLibrary';
+import {recordUse,saveFavorite,dismissFavorite,removeFavorite,reuseFavorite,promptIdentity,type PromptEntry} from '@/lib/favorites';
 import {stepLabels,canEditStep,editStep,questionsForReview,suggestionTarget,applySuggestions,type Step} from '@/lib/step-review';
 
 const KEY = 'wenxu.studio.v1';
@@ -30,6 +32,11 @@ const TYPES = [
 export default function Studio() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [active, setActive] = useState('');
+  const [library,setLibrary]=useState<PromptEntry[]>([]);
+  const libraryRef=useRef<PromptEntry[]>([]);
+  const [suggestionId,setSuggestionId]=useState('');
+  function changeLibrary(next:PromptEntry[]){libraryRef.current=next;setLibrary(next);}
+  const workspace=()=>({projects,active,...(library.length?{library}:{})});
   const [ready, setReady] = useState(false);
   const [busy, setBusy] = useState<'questions' | 'generate' | 'evaluate' | 'suggestions' | 'import' | null>(null);
   const [requests]=useState(createRequestLifecycle);
@@ -43,7 +50,7 @@ export default function Studio() {
   const [storageError, setStorageError] = useState('');
   const [writeBlocked, setWriteBlocked] = useState(false);
   const [notice, setNotice] = useState('');
-  const [modal, setModal] = useState<'help' | 'settings' | 'versions' | 'delete' | 'reask' | null>(null);
+  const [modal, setModal] = useState<'help' | 'settings' | 'versions' | 'delete' | 'reask' | 'favorites' | 'favoriteSuggestion' | null>(null);
   const [deleteId, setDeleteId] = useState('');
   const [mobileNav, setMobileNav] = useState(false);
   const modalRef = useRef<HTMLDivElement>(null);
@@ -53,6 +60,8 @@ export default function Studio() {
   const p = projects.find(x => x.id === active);
   const selectedType = TYPES.find(t => t.id === p?.type) || TYPES[0];
   const latest = p?.versions.at(-1);
+  const savedPrompt=library.find(x=>x.saved&&p&&promptIdentity(x.prompt)===promptIdentity(p.draft));
+  const suggestedPrompt=library.find(x=>x.id===suggestionId);
   const pendingChanges=p?pendingRequirementChanges(p).length:0;
   const missingSuggestions=p&&(reviewStep===1||(reviewStep===null&&p.stage==='questions'))?suggestionTarget(p):null;
   const suggestionKey=missingSuggestions?.attemptKey;
@@ -64,6 +73,7 @@ export default function Studio() {
       savedRaw.current=raw;
       const saved = parseWorkspace(raw);
       savedState.current=saved?JSON.stringify(saved):null;
+      changeLibrary(saved?.library??[]);
       // eslint-disable-next-line react-hooks/set-state-in-effect -- Restore browser-only storage after hydration, keeping the server shell deterministic.
       if (saved?.projects.length) { setProjects(saved.projects); setActive(saved.projects.some((x: Project) => x.id === saved.active) ? saved.active : saved.projects[0].id); }
       else { const first = createProject('code', 'beginner', ''); setProjects([first]); setActive(first.id); }
@@ -83,11 +93,11 @@ export default function Studio() {
   useEffect(() => {
     if (!ready || writeBlocked) return;
     let cancelled=false;
-    const persist=()=>{if(cancelled)return;const next=JSON.stringify({projects,active});if(saveWorkspace(localStorage,KEY,savedRaw.current,next,savedState.current)){savedRaw.current=next;savedState.current=next;}};
+    const persist=()=>{if(cancelled)return;const next=JSON.stringify({projects,active,...(library.length?{library}:{})});if(saveWorkspace(localStorage,KEY,savedRaw.current,next,savedState.current)){savedRaw.current=next;savedState.current=next;}};
     const failed=(e:unknown)=>{if(cancelled)return;if(e instanceof WorkspaceConflictError){setWriteBlocked(true);setStorageError(e.message);}else setStorageError('浏览器存储不可用或空间不足。当前内容仍在，请及时复制或下载保存。');};
     try { if(navigator.locks)void navigator.locks.request(KEY,persist).catch(failed);else persist(); }catch(e){failed(e);}
     return ()=>{cancelled=true;};
-  }, [projects, active, ready, writeBlocked]);
+  }, [projects, active, library, ready, writeBlocked]);
   useEffect(() => {
     if (!modal) return;
     const previous = document.activeElement as HTMLElement | null;
@@ -196,33 +206,52 @@ export default function Studio() {
     if(!p||busy||referenceBusy||reviewStep===null||!canEditStep(p,reviewStep))return;
     const next=editStep(p,reviewStep);setProjects(all=>all.map(item=>item.id===p.id?next:item));setReviewStep(null);setError('');
   }
+  function trackUse(project:Project){
+    if(writeBlocked)return;
+    const result=recordUse(libraryRef.current,{prompt:project.draft,title:project.goal,type:project.type,projectId:project.id});
+    changeLibrary(result.library);
+    if(result.suggest){setSuggestionId(result.suggest);setModal('favoriteSuggestion');}
+  }
+  function addFavorite(entry:{prompt:string;title:string;type:Kind}){
+    if(writeBlocked){toast('本页已暂停保存，请先下载备份并刷新。');return;}
+    try{changeLibrary(saveFavorite(libraryRef.current,entry));setModal(null);toast('已加入常用提示词');}catch(e){toast((e as Error).message);}
+  }
+  async function copyFavorite(entry:PromptEntry){
+    try{await navigator.clipboard.writeText(entry.prompt);toast('常用提示词已复制');}catch{toast('浏览器未允许复制，请展开完整提示词手动复制。');}
+  }
+  function useFavorite(entry:PromptEntry){
+    if(busy||referenceBusy||writeBlocked)return;
+    const next=reuseFavorite(entry,p?.mode||'beginner');
+    setProjects(all=>[next,...all]);setActive(next.id);setReviewStep(null);setNavigationEditable(false);setError('');setModal(null);setMobileNav(false);
+    toast('已放入新项目，可以直接使用或继续优化');
+  }
   async function copy() {
     if (!p?.draft) return;
-    try { await navigator.clipboard.writeText(p.draft); toast('提示词已复制'); }
+    try { await navigator.clipboard.writeText(p.draft); trackUse(p);toast('提示词已复制'); }
     catch { setError('浏览器未允许复制，请在提示词编辑框内全选并复制。'); }
   }
   async function importWorkspace(backup:Workspace){
     if(busy||referenceBusy||writeBlocked)throw Error('请先结束当前处理或恢复自动保存，再导入备份。');
     setBusy('import');
     try{
-      const merged=mergeBackup({projects,active},backup);
-      const persist=()=>{const next=JSON.stringify({projects:merged.projects,active:merged.active});saveWorkspace(localStorage,KEY,savedRaw.current,next);savedRaw.current=next;savedState.current=next;};
-      if(navigator.locks)await navigator.locks.request(KEY,persist);else persist();
-      setReviewStep(null);setNavigationEditable(false);setProjects(merged.projects);setActive(merged.active);setError('');setModal(null);
-      toast(`已导入 ${merged.added} 个项目，跳过 ${merged.skipped} 个相同项目`);
+      // Read usage after obtaining the lock: a pending clipboard write may finish while importing.
+      const persist=()=>{const merged=mergeBackup({...workspace(),library:libraryRef.current},backup);const next=JSON.stringify({projects:merged.projects,active:merged.active,...(merged.library?.length?{library:merged.library}:{})});saveWorkspace(localStorage,KEY,savedRaw.current,next);savedRaw.current=next;savedState.current=next;return merged;};
+      const merged=navigator.locks?await navigator.locks.request(KEY,persist):persist();
+      setReviewStep(null);setNavigationEditable(false);setProjects(merged.projects);setActive(merged.active);changeLibrary(merged.library??[]);setError('');setModal(null);
+      toast(`已导入 ${merged.added} 个项目，跳过 ${merged.skipped} 个相同项目${merged.library?.length?'，常用及使用记录已合并':''}`);
     }finally{setBusy(null);}
   }
   function backupWorkspace(){
-    const url=URL.createObjectURL(new Blob([JSON.stringify({projects,active},null,2)],{type:'application/json;charset=utf-8'}));
+    const url=URL.createObjectURL(new Blob([JSON.stringify(workspace(),null,2)],{type:'application/json;charset=utf-8'}));
     const link=document.createElement('a');link.href=url;link.download='问形-工作区备份.json';link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
-    toast('已导出本页的项目、未提交回答和版本记录');
+    toast('已导出项目、回答、版本和常用提示词');
   }
   function download() {
     if (!p?.draft) return;
     const url = URL.createObjectURL(new Blob([p.draft], { type: 'text/markdown;charset=utf-8' }));
     const link = document.createElement('a'); link.href = url;
     link.download = `问形-${p.goal.slice(0, 28).replace(/[<>:"/\\|?*]/g, '') || '提示词'}.md`;
-    link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000); toast('已导出 Markdown 文件');
+    link.click();trackUse(p);setTimeout(() => URL.revokeObjectURL(url), 1000);toast('已导出 Markdown 文件');
   }
   function removeProject() {
     if(busy||referenceBusy)return;
@@ -239,6 +268,7 @@ export default function Studio() {
       <button className="new-button" onClick={newProject} disabled={!!busy||referenceBusy}><Plus size={18}/> 新建提示词 <span>↗</span></button>
       <div className="nav-title">工作空间</div>
       <div className="nav-active"><WandSparkles size={18}/><span>提示词工作室</span><span className="small-tag">AI</span></div>
+      <button className="favorites-nav" onClick={()=>{setModal('favorites');setMobileNav(false);}}><Star size={17}/><span>常用提示词</span><span className="small-tag">{library.filter(x=>x.saved).length}</span></button>
       <div className="history-title"><span><History size={14}/> 最近项目</span><span>{projects.filter(x => x.goal.trim()).length}</span></div>
       <nav className="history-list" aria-label="最近项目">
         {projects.filter(x => x.goal.trim()).map(item => <div className={`history-item ${item.id === active ? 'selected' : ''}`} key={item.id}>
@@ -269,7 +299,7 @@ export default function Studio() {
           </>}
           {p.stage === 'questions' && <div className="work-grid"><section className="panel questions-panel"><div className="panel-heading"><div><span className="eyebrow">LET’S MAKE IT CLEAR</span><h2>{p.versions.length ? `第 ${p.versions.length + 1} 轮 · 深入一点` : '先从这几个问题开始'}</h2></div><span className="pill">{p.mode === 'beginner' ? '轻松入门' : '进阶创作'}</span></div><div className="question-tools"><button className="text-button" onClick={()=>setModal('reask')}><RotateCcw size={14}/> 重新提问</button></div><AnswerGuidance project={p} onDelegate={()=>{update({answers:delegateUnresolved(p)});toast('已委托问形补定未明确的部分，具体选择会标为待确认');}}/>{p.questions.map((q, index) => <div className="question-block" key={q.id}><label htmlFor={q.id}><span className="question-number">{index + 1}</span>{q.text}</label><p>{q.hint}</p><div className="answer-options">{q.options.map(option => <button key={option} className={answerFor(p, q.id) === option ? 'chosen' : ''} onClick={() => update({ answers: { ...p.answers, [q.id]: option } })}>{option}</button>)}</div><button className="text-button delegate-question" aria-pressed={answerFor(p,q.id).includes(DELEGATE_ANSWER)} onClick={()=>{try{update({answers:{...p.answers,[q.id]:delegateAnswer(answerFor(p,q.id))}});}catch(err){setError(err instanceof Error?err.message:'无法委托，原回答已保留。');}}}>问形帮我决定</button><textarea id={q.id} maxLength={4000} value={answerFor(p, q.id)} onChange={e => update({ answers: { ...p.answers, [q.id]: e.target.value } })} placeholder="选一个答案，或补充已知的主体、用途和关键细节。不确定的部分可以留待确认。" rows={2}/></div>)}<div className="question-block omissions"><label htmlFor="omissions"><Plus size={17}/> 还有什么重要的事我们没问到？</label><p>任何你在意的细节、希望避免的内容，都可以写在这里。</p><textarea id="omissions" maxLength={4000} value={p.omissions} onChange={e => update({ omissions: e.target.value })} placeholder="选填，比如：我特别在意… / 一定不要…" rows={3}/></div><div className="panel-footer"><button className="text-button" onClick={() => update({ stage: p.versions.length ? 'refine' : 'setup' })}><ArrowLeft size={15}/> 返回修改</button><button className="primary" onClick={() => request('generate')}><Sparkles size={17}/>{p.versions.length ? '生成优化版' : '生成第一版'}<ArrowRight size={17}/></button></div></section><ContextCard p={p} changeMode={() => update({ mode: p.mode === 'beginner' ? 'advanced' : 'beginner' })}/></div>}
           {p.stage === 'refine' && <div className="work-grid"><section className="panel refine-panel"><span className="eyebrow">A LITTLE CLOSER</span><h2>这一版，哪里还差一点？</h2><p className="muted">我们会根据你的反馈，继续问几个更具体的问题。</p><label className="input-label" htmlFor="feedback">你希望怎么调整？</label><textarea id="feedback" maxLength={4000} rows={6} value={p.feedback} onChange={e => update({ feedback: e.target.value })} placeholder="比如：方向对了，但风格还不够简洁；希望补上具体的输出格式…"/><label className="input-label" htmlFor="extra">还有什么重要的事我们没问到？ <span>选填</span></label><textarea id="extra" maxLength={4000} rows={4} value={p.omissions} onChange={e => update({ omissions: e.target.value })} placeholder="把遗漏的想法、限制或新需求告诉我们。"/><div className="panel-footer"><button className="text-button" onClick={() => update({ stage: 'preview' })}><ArrowLeft size={15}/> 返回预览</button><button className="primary" onClick={() => request('questions')}>{p.questions.length ? '继续原有问答' : '继续细化需求'} <ArrowRight size={17}/></button></div></section><ContextCard p={p} changeMode={() => update({ mode: p.mode === 'beginner' ? 'advanced' : 'beginner' })}/></div>}
-          {p.stage === 'preview' && <div className="preview-layout"><section className="panel editor-panel"><div className="editor-heading"><div><span className="document-icon"><PenLine size={19}/></span><div><h2>{p.status === 'completed' ? '你的最终提示词' : '提示词预览'}</h2><small>{selectedType.label} <span>·</span> 版本 {p.versions.length} <span>·</span> {p.status === 'completed' ? '已完成' : '可以直接编辑'}</small></div></div><div className="editor-tools"><button className="icon-button" onClick={() => setModal('versions')} title="版本历史" aria-label="版本历史"><History size={17}/></button><button className="icon-button" onClick={copy} title="复制提示词" aria-label="复制提示词"><Copy size={17}/></button><button className="icon-button" onClick={download} title="下载 Markdown" aria-label="下载 Markdown"><Download size={17}/></button></div></div>{latest?.conflicts.length ? <div className="conflict-note"><strong>以下要求还需要你确认</strong>{latest.conflicts.map((c, i) => <p key={i}>{c}</p>)}</div> : null}<textarea className="prompt-editor" aria-label="提示词编辑器" maxLength={24000} value={p.draft} readOnly={p.status === 'completed'} onChange={e => update({ draft: e.target.value })} spellCheck={false}/><div className="editor-status"><span><span className="green-dot"/> {p.status === 'completed' ? '已完成，随时可以再次优化' : '修改自动保存在当前浏览器'}</span><span>{p.draft.length} 字符</span></div></section><aside className="preview-side"><div className="panel next-panel"><span className={`next-icon ${p.status === 'completed' ? 'complete' : ''}`}>{p.status === 'completed' ? <CheckCheck size={25}/> : <WandSparkles size={25}/>}</span><h3>{p.status === 'completed' ? '准备好了，开始创作' : '好提示词，值得再打磨'}</h3><p>{p.status === 'completed' ? '复制这份提示词，粘贴到你喜欢的 AI 工具里使用。' : '初稿只是起点。你可以删掉重来，也可以再聊聊，让它更贴近你的期待。'}</p>{p.status === 'completed' ? <><button className="primary full" onClick={copy}><Copy size={16}/> 复制提示词</button><button className="secondary full" onClick={download}><Download size={16}/> 下载 Markdown</button><button className="text-button full" onClick={() => update({ status: 'draft', stage: 'refine' })}><RotateCcw size={15}/> 重新打开并优化</button></> : <><button className="primary full" disabled={!p.draft.trim()||pendingChanges>0} onClick={() => { update({ status: 'completed' });setNavigationEditable(false); toast('提示词已完成'); }}><Check size={17}/> 完成提示词</button><button className="secondary full" onClick={() => update({ stage: 'refine' })}><Sparkles size={16}/> 继续优化 <ArrowRight size={15}/></button><button className="danger-text full" onClick={() => { setDeleteId(p.id); setModal('delete'); }}><Trash2 size={14}/> 删除这个项目</button></>}</div>{latest?.assumptions.length ? <div className="assumption-card"><Lightbulb size={18}/><h4>这些地方，我们先做了假设</h4>{latest.assumptions.map((a, i) => <p key={i}>{a}</p>)}</div> : null}<div className="version-note"><Layers size={16}/><p>每一次优化都保留历史版本。<button onClick={() => setModal('versions')}>查看 {p.versions.length} 个版本 <ArrowUpRight size={12}/></button></p></div></aside></div>}
+          {p.stage === 'preview' && <div className="preview-layout"><section className="panel editor-panel"><div className="editor-heading"><div><span className="document-icon"><PenLine size={19}/></span><div><h2>{p.status === 'completed' ? '你的最终提示词' : '提示词预览'}</h2><small>{selectedType.label} <span>·</span> 版本 {p.versions.length} <span>·</span> {p.status === 'completed' ? '已完成' : '可以直接编辑'}</small></div></div><div className="editor-tools"><button className="icon-button" disabled={!p.draft.trim()||writeBlocked} title={savedPrompt?'已加入常用提示词':'加入常用提示词'} aria-label={savedPrompt?'已加入常用提示词':'加入常用提示词'} aria-pressed={!!savedPrompt} onClick={()=>savedPrompt?setModal('favorites'):addFavorite({prompt:p.draft,title:p.goal,type:p.type})}><Star size={17} fill={savedPrompt?'currentColor':'none'}/></button><button className="icon-button" onClick={() => setModal('versions')} title="版本历史" aria-label="版本历史"><History size={17}/></button><button className="icon-button" onClick={copy} title="复制提示词" aria-label="复制提示词"><Copy size={17}/></button><button className="icon-button" onClick={download} title="下载 Markdown" aria-label="下载 Markdown"><Download size={17}/></button></div></div>{latest?.conflicts.length ? <div className="conflict-note"><strong>以下要求还需要你确认</strong>{latest.conflicts.map((c, i) => <p key={i}>{c}</p>)}</div> : null}<textarea className="prompt-editor" aria-label="提示词编辑器" maxLength={24000} value={p.draft} readOnly={p.status === 'completed'} onChange={e => update({ draft: e.target.value })} spellCheck={false}/><div className="editor-status"><span><span className="green-dot"/> {p.status === 'completed' ? '已完成，随时可以再次优化' : '修改自动保存在当前浏览器'}</span><span>{p.draft.length} 字符</span></div></section><aside className="preview-side"><div className="panel next-panel"><span className={`next-icon ${p.status === 'completed' ? 'complete' : ''}`}>{p.status === 'completed' ? <CheckCheck size={25}/> : <WandSparkles size={25}/>}</span><h3>{p.status === 'completed' ? '准备好了，开始创作' : '好提示词，值得再打磨'}</h3><p>{p.status === 'completed' ? '复制这份提示词，粘贴到你喜欢的 AI 工具里使用。' : '初稿只是起点。你可以删掉重来，也可以再聊聊，让它更贴近你的期待。'}</p>{p.status === 'completed' ? <><button className="primary full" onClick={copy}><Copy size={16}/> 复制提示词</button><button className="secondary full" onClick={download}><Download size={16}/> 下载 Markdown</button><button className="text-button full" onClick={() => update({ status: 'draft', stage: 'refine' })}><RotateCcw size={15}/> 重新打开并优化</button></> : <><button className="primary full" disabled={!p.draft.trim()||pendingChanges>0} onClick={() => { update({ status: 'completed' });setNavigationEditable(false); toast('提示词已完成'); }}><Check size={17}/> 完成提示词</button><button className="secondary full" onClick={() => update({ stage: 'refine' })}><Sparkles size={16}/> 继续优化 <ArrowRight size={15}/></button><button className="danger-text full" onClick={() => { setDeleteId(p.id); setModal('delete'); }}><Trash2 size={14}/> 删除这个项目</button></>}</div>{latest?.assumptions.length ? <div className="assumption-card"><Lightbulb size={18}/><h4>这些地方，我们先做了假设</h4>{latest.assumptions.map((a, i) => <p key={i}>{a}</p>)}</div> : null}<div className="version-note"><Layers size={16}/><p>每一次优化都保留历史版本。<button onClick={() => setModal('versions')}>查看 {p.versions.length} 个版本 <ArrowUpRight size={12}/></button></p></div></aside></div>}
           {p.versions.length>0&&<ProjectInsights key={p.id} project={p} onChange={next=>setProjects(all=>all.map(item=>item.id===p.id?next:item))} onEvaluate={evaluate} onRefine={text=>{update({status:'draft',stage:'refine',feedback:[p.feedback,text].filter(Boolean).join('\n').slice(0,4000)});toast('建议已带入反馈，请确认后继续细化');}}/>}
         </fieldset>}
         {busy && <div className="busy-indicator" role="status"><LoaderCircle size={18} className="spin"/><div><strong>{busy === 'import' ? '正在恢复工作区…' : busy === 'questions' ? '正在想下一组好问题…' : busy==='evaluate'?'正在检查当前稿与需求…':busy==='suggestions'?'正在为原问题补齐建议选项…':'正在把你的想法写成提示词…'}</strong><span>问形 正在处理，请稍候。输入已保留。</span></div>{busy!=='import'&&<button className="secondary" onClick={cancelRequest}><ArrowLeft size={15}/> 停止等待，返回修改</button>}</div>}
@@ -278,6 +308,8 @@ export default function Studio() {
     </div>
     {notice && <div className="toast" role="status"><Check size={16}/>{notice}</div>}
     {modal && <div className="modal-backdrop" onClick={e => { if (e.target === e.currentTarget) setModal(null); }}><div className="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title" ref={modalRef}><button className="modal-close icon-button" aria-label="关闭对话框" onClick={() => setModal(null)}><X size={19}/></button>
+      {modal==='favorites'&&<FavoriteLibrary library={library} disabled={!!busy||referenceBusy||writeBlocked} onCopy={entry=>void copyFavorite(entry)} onReuse={useFavorite} onRemove={entry=>{changeLibrary(removeFavorite(libraryRef.current,entry.id));toast('已移出常用，使用记录保留');}} onClear={()=>{changeLibrary(libraryRef.current.filter(x=>x.saved));toast('已清除未收藏记录，已收藏提示词保留');}}/>}
+      {modal==='favoriteSuggestion'&&suggestedPrompt&&<><span className="modal-symbol"><Star size={24}/></span><h2 id="modal-title">要加入常用提示词吗？</h2><p>这份提示词已在4个不同项目中被使用。加入常用，下次更容易找到。</p><div className="favorite-suggestion"><strong>{suggestedPrompt.title}</strong><pre>{suggestedPrompt.prompt}</pre></div><div className="modal-actions"><button className="secondary" disabled={writeBlocked} onClick={()=>{changeLibrary(dismissFavorite(libraryRef.current,suggestionId));setModal(null);}}>不再提醒此提示词</button><button className="primary" disabled={writeBlocked} onClick={()=>addFavorite(suggestedPrompt)}><Star size={15}/>加入常用</button></div></>}
       {modal === 'settings' && <><span className="modal-symbol"><SlidersHorizontal size={24}/></span><h2 id="modal-title">问形服务</h2><p className="connection-state"><span className={configured ? 'green-dot' : 'amber-dot'}/>{configured === true ? '问形服务已配置' : configured === false ? '问形服务尚未配置' : '暂时无法确认问形服务状态'}</p><p>问形会通过简单问答，帮助你把想法整理成清晰、具体的提示词。</p><p className="muted">项目保存在当前浏览器。每轮提问与生成会通过问形调用模型服务处理需求；请及时下载重要结果。</p><div className="row-actions"><button className="secondary" onClick={backupWorkspace}>下载工作区备份</button></div><BackupImport disabled={!!busy||writeBlocked} onImport={importWorkspace}/><button className="primary full" onClick={() => setModal(null)}>继续创作 <ArrowRight size={15}/></button></>}
       {modal === 'help' && <><span className="modal-symbol"><Sparkles size={24}/></span><h2 id="modal-title">从想法到好提示词</h2>{[['选一个方向','代码、图片、视频、文案，或自定义任务。新手选轻松入门，熟悉 AI 可以选择进阶创作。'],['回答几个问题','可以选择“不确定”，但建议至少说明用途、主体或关键内容。多项不确定时可能需要补充后才能得到具体结果。'],['预览，再打磨','直接修改初稿，或点击继续优化。每次保留旧版，直到你觉得满意。'],['带走你的提示词','点击完成，复制或下载到喜欢的 AI 工具里。随时可以重新打开优化。']].map(([title,description],i) => <div className="help-step" key={title}><b>0{i+1}</b><div><strong>{title}</strong><p>{description}</p></div></div>)}<p className="muted">无需注册应用账号。项目仅保存在本浏览器，清理浏览器数据会删除记录。重要结果请下载保存。</p><button className="primary full" onClick={() => setModal(null)}>开始探索 <ArrowRight size={16}/></button></>}
       {modal === 'delete' && <><span className="modal-symbol danger"><Trash2 size={24}/></span><h2 id="modal-title">删除这个项目？</h2><p>项目「{projects.find(x => x.id === deleteId)?.goal || '未命名想法'}」及所有历史版本都将被删除，无法恢复。</p><div className="modal-actions"><button className="secondary" onClick={() => setModal(null)}>保留项目</button><button className="danger-button" onClick={removeProject}>确认删除</button></div></>}

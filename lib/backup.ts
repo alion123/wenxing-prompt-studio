@@ -1,6 +1,7 @@
 import type {Project} from './studio.ts';
 import {parseWorkspace} from './persistence.ts';
-export type Workspace={projects:Project[];active:string};
+import {mergeLibrary,type PromptEntry} from './favorites.ts';
+export type Workspace={projects:Project[];active:string;library?:PromptEntry[]};
 export function readBackup(raw:string):Workspace{
   if(new TextEncoder().encode(raw).length>10*1024*1024)throw Error('备份超过10MB，请使用较小的备份文件。');
   let workspace:Workspace|null;
@@ -23,16 +24,19 @@ export function mergeBackup(current:Workspace,backup:Workspace){
   const existing=new Map(current.projects.map(p=>[p.id,p]));
   const normalize=(project:Project)=>parseWorkspace(JSON.stringify({projects:[project],active:project.id}))!.projects[0];
   const fingerprint=(project:Project)=>JSON.stringify(normalize({...project,id:''}));
-  const fingerprints=new Set(current.projects.map(fingerprint));
+  const fingerprints=new Map(current.projects.map(p=>[fingerprint(p),p.id]));
+  const importedIds=new Map<string,string>();
   const added:Project[]=[];let skipped=0,active=current.active;
   for(const original of backup.projects){
     const p=structuredClone(original),prior=existing.get(p.id);
     // Compare validated shapes so property ordering or legacy defaults do not create false copies.
-    if(prior&&fingerprints.has(fingerprint(p))){skipped++;continue;}
+    if(prior&&fingerprints.has(fingerprint(p))){importedIds.set(original.id,fingerprints.get(fingerprint(p))!);skipped++;continue;}
     if(existing.has(p.id)){do{p.id=crypto.randomUUID();}while(existing.has(p.id));}
-    existing.set(p.id,p);fingerprints.add(fingerprint(p));added.push(p);
+    existing.set(p.id,p);fingerprints.set(fingerprint(p),p.id);importedIds.set(original.id,p.id);added.push(p);
     if(original.id===backup.active)active=p.id;
   }
   if(added.length&&!added.some(p=>p.id===active)&&!current.projects.some(p=>p.id===active))active=added[0].id;
-  return {projects:[...added,...current.projects],active,added:added.length,skipped};
+  const incomingLibrary=backup.library?.map(entry=>({...entry,usedIn:[...new Set(entry.usedIn.map(id=>importedIds.get(id)??id))]}));
+  const library=current.library||incomingLibrary?mergeLibrary(current.library??[],incomingLibrary??[]):undefined;
+  return {projects:[...added,...current.projects],active,...(library?{library}:{}),added:added.length,skipped};
 }

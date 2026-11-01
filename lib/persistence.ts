@@ -1,6 +1,7 @@
 import type { Project } from './studio.ts';
 import { z } from 'zod';
 import {referencesSchema} from './references.ts';
+import {librarySchema,type PromptEntry} from './favorites.ts';
 const str = z.string();
 const question = z.object({ id: str, text: str, hint: str, options: z.array(str) });
 const requirement=z.object({id:str,text:str,status:z.enum(['confirmed','proposed','rejected']),source:z.enum(['user','model','legacy']),sourceDetail:str,scope:z.enum(['project','character','shot']),kind:z.enum(['requirement','assumption']),createdAt:str,updatedAt:str,sourceRoundId:str.optional(),previousText:str.optional(),replacesId:str.optional(),supersededBy:str.optional()});
@@ -12,8 +13,8 @@ const version = z.object({ id: str, createdAt: str, label: str.optional(), promp
 const project = z.object({ id: str, type: z.enum(['code', 'image', 'video', 'copy', 'custom']), mode: z.enum(['beginner', 'advanced']),
   goal: str, createdAt: str, updatedAt: str, pendingRefinement:z.boolean().optional(), references:referencesSchema.optional(), status: z.enum(['draft', 'completed']), stage: z.enum(['setup', 'questions', 'preview', 'refine']),
   questions: z.array(question), answers: z.record(str), feedback: str, omissions: str, draft: str, versions: z.array(version),requirements:z.array(requirement).default([]),rounds:z.array(round).default([]),assessment:report.optional() });
-const workspace = z.object({ projects: z.array(project), active: str });
+const workspace = z.object({ projects: z.array(project), active: str,library:librarySchema.optional() });
 export {question as questionSchema,report as qualityReportSchema};
-export function parseWorkspace(raw: string | null): { projects: Project[]; active: string } | null {
+export function parseWorkspace(raw: string | null): { projects: Project[]; active: string;library?:PromptEntry[] } | null {
   return raw === null ? null : workspace.parse(JSON.parse(raw));
 }
