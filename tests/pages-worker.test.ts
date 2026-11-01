@@ -29,3 +29,12 @@ test('public API routes preserve origin, method and provider generation behavior
   const foreign=await worker.fetch(request('/api/studio',{method:'POST',headers:{Origin:'https://other.test'},body}),env);assert.equal(foreign.status,403);assert.equal(calls,0);
   const good=await worker.fetch(request('/api/studio',{method:'POST',headers:{'Content-Type':'application/json'},body}),env);assert.equal(good.status,200);assert.equal(calls,1);assert.match((await good.json() as {prompt:string}).prompt,/离线记账/);
 });
+
+test('auth config endpoint only publishes browser-safe settings, never provider secrets',async()=>{
+ const worker=createPagesWorker(async()=>{throw Error('no upstream');});
+ const settings={...env,SUPABASE_URL:'https://project.supabase.co',SUPABASE_PUBLISHABLE_KEY:'sb_publishable_12345678901234567890'};
+ const response=await worker.fetch(request('/api/auth-config'),settings);assert.equal(response.status,200);
+ assert.deepEqual(await response.json(),{url:settings.SUPABASE_URL,publishableKey:settings.SUPABASE_PUBLISHABLE_KEY});
+ const secret=await worker.fetch(request('/api/auth-config'),{...settings,SUPABASE_PUBLISHABLE_KEY:'sb_secret_PRIVATE12345678'});assert.deepEqual(await secret.json(),{url:null,publishableKey:null});
+ assert.equal((await worker.fetch(request('/api/auth-config',{method:'POST'}),settings)).status,405);
+});

@@ -20,7 +20,8 @@ import {FavoriteLibrary} from '@/components/studio/FavoriteLibrary';
 import {recordUse,saveFavorite,dismissFavorite,removeFavorite,reuseFavorite,promptIdentity,type PromptEntry} from '@/lib/favorites';
 import {stepLabels,canEditStep,editStep,questionsForReview,suggestionTarget,applySuggestions,type Step} from '@/lib/step-review';
 
-const KEY = 'wenxu.studio.v1';
+import {AccountSession} from '@/components/studio/AccountSession';
+import {AccountPanel} from '@/components/studio/AccountPanel';
 const TYPES = [
   { id: 'code', label: '代码开发', en: 'CODE', icon: Code2, description: '网站、应用、脚本', example: '我想做一个简洁的个人记账网页，能按月查看支出。' },
   { id: 'image', label: '图片创作', en: 'IMAGE', icon: ImageIcon, description: '海报、插画、摄影', example: '我想生成一张咖啡品牌的春日海报，温暖、有自然感。' },
@@ -29,7 +30,10 @@ const TYPES = [
   { id: 'custom', label: '更多可能', en: 'EXPLORE', icon: WandSparkles, description: '任何值得探索的想法', example: '我想制定一个适合零基础学习者的英语口语练习计划。' },
 ] as const;
 
-export default function Studio() {
+export default function Page(){return <AccountSession>{storageKey=><Studio key={storageKey} storageKey={storageKey}/>}</AccountSession>;}
+
+function Studio({storageKey}:{storageKey:string}) {
+  const KEY=storageKey;
   const [projects, setProjects] = useState<Project[]>([]);
   const [active, setActive] = useState('');
   const [library,setLibrary]=useState<PromptEntry[]>([]);
@@ -280,7 +284,7 @@ export default function Studio() {
       <div className="sidebar-bottom"><div className="small-tip"><span className="tip-icon"><Lightbulb size={18}/></span><strong>不必一次想清楚</strong><p>先说一个想法，剩下的<br/>我们一起慢慢完善。</p><span className="tip-spark">✧</span></div><button className="guide-button" onClick={() => setModal('help')}><CircleHelp size={17}/> 使用指南 <ArrowUpRight size={15}/></button><div className="local-profile"><span className="avatar">你</span><div>我的工作空间<small><span className="green-dot"/> {storageError ? '请手动保存内容' : '本地自动保存'}</small></div><ShieldCheck size={16}/></div></div>
     </aside>
     {mobileNav && <button className="mobile-scrim" aria-label="关闭项目栏" onClick={() => setMobileNav(false)}/>}
-    <div className="main-shell"><header className="topbar"><div className="breadcrumb"><button className="mobile-menu" onClick={() => setMobileNav(!mobileNav)} aria-label="打开项目栏"><Layers size={21}/></button><span>工作空间</span><span className="slash">/</span><strong>提示词工作室</strong></div><div className="top-actions">{busy&&busy!=='import'&&<button className="activity-button" onClick={()=>setReviewStep(null)} aria-label="查看正在进行的生成任务"><LoaderCircle size={15} className="spin"/><span>{busy==='questions'?'正在提问':busy==='evaluate'?'正在评估':busy==='suggestions'?'正在补齐建议':'正在生成'}</span></button>}<span className="private-label"><ShieldCheck size={13}/> 私有工作空间</span><button className="model-button" onClick={() => setModal('settings')}><span className={configured ? 'green-dot' : 'amber-dot'}/> 问形 <ChevronDown size={13}/></button></div></header>
+    <div className="main-shell"><header className="topbar"><div className="breadcrumb"><button className="mobile-menu" onClick={() => setMobileNav(!mobileNav)} aria-label="打开项目栏"><Layers size={21}/></button><span>工作空间</span><span className="slash">/</span><strong>提示词工作室</strong></div><div className="top-actions">{busy&&busy!=='import'&&<button className="activity-button" onClick={()=>setReviewStep(null)} aria-label="查看正在进行的生成任务"><LoaderCircle size={15} className="spin"/><span>{busy==='questions'?'正在提问':busy==='evaluate'?'正在评估':busy==='suggestions'?'正在补齐建议':'正在生成'}</span></button>}<AccountPanel disabled={!!busy||referenceBusy||writeBlocked||!ready} workspace={workspace} onImport={importWorkspace} onCloudBusy={setReferenceBusy}/><span className="private-label"><ShieldCheck size={13}/> 私有工作空间</span><button className="model-button" onClick={() => setModal('settings')}><span className={configured ? 'green-dot' : 'amber-dot'}/> 问形 <ChevronDown size={13}/></button></div></header>
       <main><div className="page-top"><span className="eyebrow"><span/> FROM IDEA TO PROMPT</span><button className="text-button" onClick={() => setModal('help')}><CircleHelp size={15}/> 如何使用</button></div>
         <div className="hero"><div><div className="hero-kicker">让好想法，有更好的表达</div><h1>{p?.status === 'completed' ? <>想法就绪，<span>去创造吧。</span></> : p?.stage === 'setup' || !p ? <>从一个想法，<br className="mobile-break"/>到<span>一条好提示词。</span></> : p.stage === 'questions' ? <>好问题，让方向<span>更清晰。</span></> : p.stage === 'refine' ? <>再近一步，<span>更像你想的。</span></> : <>你的想法，<span>已经有了形状。</span></>}</h1><p>{p?.status === 'completed' ? '复制到你喜欢的 AI 工具，开始下一步创作。' : p?.stage === 'setup' || !p ? '不需要学习复杂的技巧。回答几个简单问题，让 AI 帮你把需求表达清楚。' : p.stage === 'questions' ? '不用想得很完美，按你的直觉回答。不确定的部分，我们会帮你标出来。' : p.stage === 'refine' ? '告诉我们哪里还不够好，再补充一些细节，让下一版更贴近你的期待。' : '先读一读，也可以直接修改。满意就完成，还差一点就继续打磨。'}</p></div><div className="hero-art" aria-hidden="true"><div className="art-orbit"/><div className="art-card back"/><div className="art-card front"><Sparkles size={26}/><span/><span/><span/></div><i className="spark-one">✦</i><i className="spark-two">✧</i></div></div>
         <nav className="steps" aria-label="创建进度">{stepLabels.map((label,i)=><div className={`step ${(reviewStep??step)===i?'current':step>i?'passed':''}`} key={label}><button className="step-button" aria-current={(reviewStep??step)===i?'step':undefined} onClick={()=>openStep(i as Step)} disabled={!ready||busy==='import'}><span className="step-number">{step>i?<Check size={13}/>: `0${i+1}`}</span><span>{label}</span></button>{i<3&&<span className="step-line"/>}</div>)}</nav>
