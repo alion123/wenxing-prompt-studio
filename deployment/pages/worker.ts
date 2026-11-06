@@ -1,5 +1,7 @@
 import {handleStudio} from '../../lib/deepseek.ts';
 import {publicAuthConfig} from '../../lib/auth-config.ts';
+import {checkStudioAccess} from '../../lib/studio-access.ts';
+import {withQuotaHeaders} from '../../lib/quota.ts';
 
 type PagesEnv={ASSETS:{fetch:(request:Request)=>Promise<Response>};DEEPSEEK_API_KEY?:string;DEEPSEEK_MODEL?:string;WENXU_ACCESS_CODE?:string;SUPABASE_URL?:string;SUPABASE_PUBLISHABLE_KEY?:string};
 const headers={'Cache-Control':'private, no-store','X-Content-Type-Options':'nosniff','Referrer-Policy':'same-origin'};
@@ -8,6 +10,11 @@ const jsonError=(status:number,code:string,message:string,extra:Record<string,st
 export function createPagesWorker(fetcher:typeof fetch=fetch){
   return {async fetch(request:Request,env:PagesEnv):Promise<Response>{
     const url=new URL(request.url),api=url.pathname.startsWith('/api/');
+    // Serve the ownership file directly because Pages redirects .html asset URLs.
+    if(url.pathname==='/google6fe8b4bccb41e560.html'&&(request.method==='GET'||request.method==='HEAD')){
+      const assetUrl=new URL('/google6fe8b4bccb41e560',url);
+      return env.ASSETS.fetch(new Request(assetUrl,request));
+    }
     if(url.pathname==='/api/auth-config'){
       if(request.method!=='GET')return jsonError(405,'method','此接口仅支持GET。',{Allow:'GET'});
       return Response.json(publicAuthConfig(env),{headers});
@@ -22,7 +29,10 @@ export function createPagesWorker(fetcher:typeof fetch=fetch){
     }
     if(url.pathname==='/api/studio'){
       if(request.method!=='POST')return jsonError(405,'method','此接口仅支持POST。',{Allow:'POST'});
-      return handleStudio(request,{DEEPSEEK_API_KEY:env.DEEPSEEK_API_KEY,DEEPSEEK_MODEL:env.DEEPSEEK_MODEL},fetcher);
+      const quotaHeaders=new Headers();
+      const denied=await checkStudioAccess(request,env,fetcher,quotaHeaders);
+      const response=denied??await handleStudio(request,{DEEPSEEK_API_KEY:env.DEEPSEEK_API_KEY,DEEPSEEK_MODEL:env.DEEPSEEK_MODEL},fetcher);
+      return withQuotaHeaders(response,quotaHeaders);
     }
     if(api||url.pathname==='/_worker.js'||url.pathname==='/_routes.json')return jsonError(404,'not_found','未找到此地址。');
     if(request.method!=='GET'&&request.method!=='HEAD')return jsonError(405,'method','此页面仅支持GET或HEAD。',{Allow:'GET, HEAD'});

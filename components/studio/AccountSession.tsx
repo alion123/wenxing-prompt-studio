@@ -2,6 +2,7 @@
 import {createContext,useContext,useEffect,useState,type ReactNode} from 'react';
 import {createClient,type Session,type SupabaseClient} from '@supabase/supabase-js';
 import {accountStorageKey} from '@/lib/account-workspace';
+import {createAccountFetch} from '@/lib/account-fetch';
 
 type Account={client:SupabaseClient|null;session:Session|null;recovery:boolean;finishRecovery:()=>void};
 const Context=createContext<Account>({client:null,session:null,recovery:false,finishRecovery:()=>{}});
@@ -15,7 +16,8 @@ export function AccountSession({children}:{children:(storageKey:string)=>ReactNo
     const fail=()=>{if(live){setAccount(null);setError('无法确认账号状态。为保护本地工作区，请刷新重试。');}};
     void(async()=>{
       try{
-        const response=await fetch('/api/auth-config',{cache:'no-store'});
+        const accountFetch=createAccountFetch();
+        const response=await accountFetch('/api/auth-config',{cache:'no-store'});
         if(!response.ok)throw Error();
         const body:unknown=await response.json();
         if(!body||typeof body!=='object'||!('url' in body)||!('publishableKey' in body))throw Error();
@@ -25,7 +27,7 @@ export function AccountSession({children}:{children:(storageKey:string)=>ReactNo
         if(typeof config.url!=='string'||typeof config.publishableKey!=='string'||!config.publishableKey)throw Error();
         const url=new URL(config.url);
         if(url.protocol!=='https:'||url.username||url.password)throw Error();
-        const client=createClient(url.origin,config.publishableKey,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:true}});
+        const client=createClient(url.origin,config.publishableKey,{global:{fetch:accountFetch},auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:true}});
         let events=0,initialized=false;
         let latest:{session:Session|null;recovery:boolean}|null=null;
         const {data}=client.auth.onAuthStateChange((event,session)=>{

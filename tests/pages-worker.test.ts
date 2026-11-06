@@ -20,14 +20,32 @@ test('visitors open assets and status without credentials even with an obsolete 
   }
 });
 
-test('public API routes preserve origin, method and provider generation behavior',async()=>{
+test('studio requires a verified account before calling the model',async()=>{
   let calls=0;const worker=createPagesWorker(async()=>{calls++;return new Response(JSON.stringify({choices:[{finish_reason:'stop',message:{content:JSON.stringify({prompt:'写一个离线记账应用。',summary:'离线记账',constraints:[],assumptions:[],conflicts:[]})}}]}));});
   assert.deepEqual(await (await worker.fetch(request('/api/status'),env)).json(),{configured:true});
   assert.equal((await worker.fetch(request('/api/studio'),env)).status,405);
   assert.equal((await worker.fetch(request('/api/unknown'),env)).status,404);
   const body=JSON.stringify({action:'generate',context:makeContext(createProject('code','beginner','记账应用'))});
   const foreign=await worker.fetch(request('/api/studio',{method:'POST',headers:{Origin:'https://other.test'},body}),env);assert.equal(foreign.status,403);assert.equal(calls,0);
-  const good=await worker.fetch(request('/api/studio',{method:'POST',headers:{'Content-Type':'application/json'},body}),env);assert.equal(good.status,200);assert.equal(calls,1);assert.match((await good.json() as {prompt:string}).prompt,/离线记账/);
+  const settings={...env,SUPABASE_URL:'https://project.supabase.co',SUPABASE_PUBLISHABLE_KEY:'sb_publishable_12345678901234567890'};
+  const post=(token?:string)=>request('/api/studio',{method:'POST',headers:{'Content-Type':'application/json',...(token?{Authorization:'Bearer '+token}:{})},body});
+  assert.equal((await worker.fetch(post(),settings)).status,401);
+  assert.equal(calls,0);
+  let verified=false;
+  const secured=createPagesWorker(async(input,options)=>{
+    if(String(input).endsWith('/rpc/wenxing_consume_generation'))return Response.json({allowed:true,remaining:3,limit:7,reset_at:'2026-11-06T16:00:00Z'});
+    if(String(input)==='https://project.supabase.co/auth/v1/user'){
+      assert.equal(new Headers(options?.headers).get('apikey'),settings.SUPABASE_PUBLISHABLE_KEY);
+      return verified?Response.json({id:'user',email_confirmed_at:'2026-11-03T00:00:00Z'}):Response.json({id:'user'});
+    }
+    return workerModel(input,options);
+  });
+  const workerModel:typeof fetch=async()=>{calls++;return Response.json({choices:[{finish_reason:'stop',message:{content:JSON.stringify({prompt:'写一个离线记账应用。',summary:'离线记账',constraints:[],assumptions:[],conflicts:[]})}}]});};
+  assert.equal((await secured.fetch(post('test-token'),settings)).status,403);
+  assert.equal(calls,0);
+  verified=true;
+  const good=await secured.fetch(post('test-token'),settings);assert.equal(good.status,200);assert.equal(calls,1);assert.match((await good.json() as {prompt:string}).prompt,/离线记账/);
+  assert.equal(good.headers.get('X-Wenxing-Quota-Remaining'),'3');
 });
 
 test('auth config endpoint only publishes browser-safe settings, never provider secrets',async()=>{

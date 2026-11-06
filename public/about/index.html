@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>问形 · 中文 AI 提示词生成器</title>
+  <meta name="description" content="问形通过中文问答，把你的想法整理成可编辑、可复制的 AI 提示词。支持代码、图片、视频、文案和自定义任务。">
+  <link rel="canonical" href="https://wenxingprompt.cn/about/">
+  <link rel="icon" href="/favicon.svg">
+  <style>
+    :root { color-scheme: light; font-family: system-ui, "Microsoft YaHei", sans-serif; color: #272339; background: #f7f5fc; }
+    body { margin: 0; }
+    header, main, footer { max-width: 64rem; margin: auto; padding: 1.5rem; }
+    header { display: flex; justify-content: space-between; align-items: center; gap: 1rem; }
+    .brand { display: flex; align-items: center; gap: .75rem; font-weight: 750; }
+    .brand img { width: 2rem; height: 2rem; }
+    .hero { padding: clamp(2rem, 8vw, 6rem) 0 3rem; }
+    .kicker { color: #6047b6; font-weight: 700; }
+    h1 { font-size: clamp(2.1rem, 5vw, 4rem); line-height: 1.16; letter-spacing: -.03em; margin: .6em 0 .35em; }
+    p, li { line-height: 1.75; }
+    .hero p { max-width: 39rem; color: #564e67; }
+    .entry { display: inline-block; padding: .75rem 1.1rem; border-radius: .7rem; background: #674ac6; color: white; text-decoration: none; font-weight: 650; }
+    a:focus-visible { outline: 3px solid #2f1e6d; outline-offset: 4px; }
+    .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr)); gap: 1rem; padding: 0; list-style: none; }
+    .cards li { padding: 1.25rem; border: 1px solid #e4def1; border-radius: .9rem; background: white; }
+    .cards p { margin: .4rem 0 0; color: #564e67; }
+    section + section { margin-top: 2.5rem; }
+    .example { padding: 1.25rem; border: 1px solid #e4def1; border-radius: .9rem; background: white; }
+    .example p { margin: .5rem 0; }
+    footer { color: #564e67; }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="brand"><img src="/favicon.svg" alt="">问形</div>
+    <a class="entry" href="/">进入工作区</a>
+  </header>
+  <main>
+    <section class="hero">
+      <div class="kicker">中文 AI 提示词工作室</div>
+      <h1>从一个想法，到一条好提示词</h1>
+      <p>想做一张海报、一段短片或一个小应用？用一句话告诉问形你的想法。问形会根据任务提出几个问题，再把你的回答整理成一份具体的提示词。</p>
+      <a class="entry" href="/">登录或创建账号</a>
+    </section>
+    <section aria-labelledby="uses">
+      <h2 id="uses">可以用问形做什么</h2>
+      <ul class="cards">
+        <li><strong>图片与视频</strong><p>补齐画风、角色和构图。视频还可以明确时长、分镜与运镜。</p></li>
+        <li><strong>代码与应用</strong><p>把功能、输入输出和验收要求写清楚，再交给你常用的 AI 编程工具。</p></li>
+        <li><strong>文案与其他任务</strong><p>明确读者、用途和表达语气，把零散想法整理成可直接使用的指令。</p></li>
+      </ul>
+    </section>
+    <section aria-labelledby="example">
+      <h2 id="example">提示词示例 · 咖啡店开业海报</h2>
+      <div class="example">
+        <p><strong>一句话想法</strong>　帮我做一张咖啡店开业海报。</p>
+        <p><strong>问形会追问</strong>　海报用在哪里？想要什么风格？画面要给哪些文字留位置？</p>
+        <p><strong>整理后的提示词</strong>　设计一张用于社交媒体的 4:5 竖版咖啡店开业海报。用暖米色和深咖色，主体是一杯放在木桌上的拿铁，窗边自然光从左上方照入。上方留出店名和开业标题的位置，下方留出日期和地址的位置。画面中只保留留白区域，文字后期添加。</p>
+      </div>
+    </section>
+    <section aria-labelledby="flow">
+      <h2 id="flow">从需求到提示词</h2>
+      <ol>
+        <li>注册并验证邮箱，登录后选择创作方向。</li>
+        <li>回答几个问题并预览初稿。可以直接编辑，也可以继续回答问题来打磨提示词。</li>
+        <li>完成后复制或下载 Markdown，把提示词交给你选择的 AI 工具。</li>
+      </ol>
+    </section>
+<section><h2>提示词教程与使用帮助</h2><nav><a href="/about/">了解问形</a><a href="/guides/code/">代码</a><a href="/guides/image/">图片</a><a href="/guides/video/">视频</a><a href="/help/">使用帮助</a></nav></section>
+  </main>
+  <footer>问形 · AI 提示词工作室</footer>
+</body>
+</html>

@@ -39,3 +39,33 @@
 .account-modal .muted{font-size:12px;line-height:1.7;margin-top:18px}
 .account-modal button:disabled{opacity:.5;cursor:not-allowed}
 @media(max-width:600px){.account-trigger{font-size:11px!important;padding:7px!important}.account-modal{width:calc(100vw - 24px)!important;padding:24px!important}.account-cloud .row-actions button{width:100%;justify-content:center}}
+
+.account-modal .account-form label,
+.account-modal .account-form input,
+.account-modal .account-form .primary,
+.account-modal .text-button,
+.account-modal .muted {
+  font-size: 16px;
+}
+.account-modal .text-button {
+  color: #645379;
+  font-weight: 600;
+  min-height: 44px;
+}
+.account-modal .muted {
+  color: #6e6278;
+}
+.history-open,
+.answer-options button,
+.review-option,
+.reference-heading p,
+.reference-empty {
+  font-size: 14px;
+}
+.prompt-editor {
+  font-size: 16px;
+  line-height: 1.8;
+}
+.workspace-sync-notice{max-width:260px;padding:8px 10px;border:1px solid #ded5ef;border-radius:8px;background:#faf8ff;color:#645379;font-size:13px;line-height:1.6;text-align:left;cursor:pointer}
+.quota-badge{font-size:14px;color:#645379;white-space:nowrap}.quota-badge.low{font-weight:600;color:#94652a}.quota-backdrop{z-index:120}.quota-modal{max-width:540px;max-height:90dvh;overflow:auto;text-align:left}.quota-modal p{font-size:16px;line-height:1.8;margin:14px 0}.quota-modal .primary{margin-top:24px}
+@media(max-width:900px){.topbar{height:auto;min-height:76px;gap:12px;flex-wrap:wrap;padding-top:12px;padding-bottom:12px}.top-actions{flex-wrap:wrap;justify-content:flex-end}.workspace-sync-notice{max-width:100%;flex-basis:100%;font-size:14px}}

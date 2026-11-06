@@ -11,7 +11,7 @@ import {generationErrorMessage} from '@/lib/answer-guidance';
 import {readStudioResponse,StudioApiError,requestFailureMessage} from '@/lib/api-response';
 import {saveWorkspace,WorkspaceConflictError} from '@/lib/workspace-storage';
 import {delegateUnresolved,delegateAnswer,DELEGATE_ANSWER} from '@/lib/delegation';
-import {mergeBackup,type Workspace} from '@/lib/backup';
+import {mergeBackup,readBackup,type Workspace} from '@/lib/backup';
 import {BackupImport} from '@/components/studio/BackupImport';
 import {createRequestLifecycle} from '@/lib/request-lifecycle';
 import {StepReview} from '@/components/studio/StepReview';
@@ -20,8 +20,11 @@ import {FavoriteLibrary} from '@/components/studio/FavoriteLibrary';
 import {recordUse,saveFavorite,dismissFavorite,removeFavorite,reuseFavorite,promptIdentity,type PromptEntry} from '@/lib/favorites';
 import {stepLabels,canEditStep,editStep,questionsForReview,suggestionTarget,applySuggestions,type Step} from '@/lib/step-review';
 
-import {AccountSession} from '@/components/studio/AccountSession';
+import {AccountSession,useAccount} from '@/components/studio/AccountSession';
+import {accountStorageKey} from '@/lib/account-workspace';
 import {AccountPanel} from '@/components/studio/AccountPanel';
+import {QuotaNotice} from '@/components/studio/QuotaNotice';
+import {readQuotaSnapshot,QuotaNoticeTracker,type QuotaSnapshot,type QuotaNoticeKind} from '@/lib/quota';
 const TYPES = [
   { id: 'code', label: '代码开发', en: 'CODE', icon: Code2, description: '网站、应用、脚本', example: '我想做一个简洁的个人记账网页，能按月查看支出。' },
   { id: 'image', label: '图片创作', en: 'IMAGE', icon: ImageIcon, description: '海报、插画、摄影', example: '我想生成一张咖啡品牌的春日海报，温暖、有自然感。' },
@@ -30,10 +33,24 @@ const TYPES = [
   { id: 'custom', label: '更多可能', en: 'EXPLORE', icon: WandSparkles, description: '任何值得探索的想法', example: '我想制定一个适合零基础学习者的英语口语练习计划。' },
 ] as const;
 
-export default function Page(){return <AccountSession>{storageKey=><Studio key={storageKey} storageKey={storageKey}/>}</AccountSession>;}
+export default function Page(){return <AccountSession>{storageKey=><StudioEntry key={storageKey} storageKey={storageKey}/>}</AccountSession>;}
+
+function StudioEntry({storageKey}:{storageKey:string}) {
+  const {session,recovery}=useAccount();
+  if(recovery||!session?.user.email_confirmed_at){
+    return <main className="account-loading"><AccountPanel disabled={false}/></main>;
+  }
+  return <Studio storageKey={storageKey}/>;
+}
 
 function Studio({storageKey}:{storageKey:string}) {
   const KEY=storageKey;
+  const {session}=useAccount();
+  const studioHeaders={
+    'Content-Type':'application/json',
+    Authorization:`Bearer ${session?.access_token ?? ''}`,
+  };
+  const [hasLegacyWorkspace,setHasLegacyWorkspace]=useState(false);
   const [projects, setProjects] = useState<Project[]>([]);
   const [active, setActive] = useState('');
   const [library,setLibrary]=useState<PromptEntry[]>([]);
@@ -51,6 +68,19 @@ function Studio({storageKey}:{storageKey:string}) {
   const [referenceBusy,setReferenceBusy]=useState(false);
   const [configured, setConfigured] = useState<boolean | null>(null);
   const [error, setError] = useState('');
+  const [quota,setQuota]=useState<QuotaSnapshot|null>(null);
+  const [quotaNotice,setQuotaNotice]=useState<QuotaNoticeKind|null>(null);
+  const [quotaTracker]=useState(()=>new QuotaNoticeTracker());
+  function observeQuota(response:Response){
+    const snapshot=readQuotaSnapshot(response.headers);if(!snapshot)return;
+    setQuota(snapshot);
+    const notice=quotaTracker.next(snapshot);if(notice)setQuotaNotice(notice);
+  }
+  useEffect(()=>{
+    if(!quota)return;
+    const timer=window.setTimeout(()=>{setQuota(null);setQuotaNotice(null);},Math.max(0,Math.min(Date.parse(quota.resetAt)-Date.now(),2147483647)));
+    return()=>window.clearTimeout(timer);
+  },[quota]);
   const [storageError, setStorageError] = useState('');
   const [writeBlocked, setWriteBlocked] = useState(false);
   const [notice, setNotice] = useState('');
@@ -80,12 +110,17 @@ function Studio({storageKey}:{storageKey:string}) {
       changeLibrary(saved?.library??[]);
       // eslint-disable-next-line react-hooks/set-state-in-effect -- Restore browser-only storage after hydration, keeping the server shell deterministic.
       if (saved?.projects.length) { setProjects(saved.projects); setActive(saved.projects.some((x: Project) => x.id === saved.active) ? saved.active : saved.projects[0].id); }
-      else { const first = createProject('code', 'beginner', ''); setProjects([first]); setActive(first.id); }
+      else {
+        const first = createProject('code', 'beginner', '');
+        savedState.current=JSON.stringify({projects:[first],active:first.id,...(saved?.library?.length?{library:saved.library}:{})});
+        setProjects([first]); setActive(first.id);
+      }
     } catch {
       const first = createProject('code', 'beginner', ''); setProjects([first]); setActive(first.id);
       setWriteBlocked(true);
       setStorageError('无法读取本地记录，原始记录未被覆盖。本次内容不会自动保存，请及时复制或下载。');
     }
+    try { setHasLegacyWorkspace(Boolean(localStorage.getItem(accountStorageKey(null)))); } catch {}
     setReady(true);
     const onStorage=(event:StorageEvent)=>{
       if((event.key===KEY||event.key===null)&&event.newValue!==savedRaw.current){setWriteBlocked(true);setStorageError('另一个页面已更新或清空工作区。本页已暂停自动保存，请先下载本页备份，再刷新读取最新记录。');}
@@ -146,7 +181,8 @@ function Studio({storageKey}:{storageKey:string}) {
     const token=requests.begin();
     const snapshot = { ...p };
     try {
-      const r = await fetch('/api/studio', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action, context: makeContext(snapshot) }), signal: AbortSignal.any([token.signal,AbortSignal.timeout(65_000)]) });
+      const r = await fetch('/api/studio', { method: 'POST', headers: studioHeaders, body: JSON.stringify({ action, context: makeContext(snapshot) }), signal: AbortSignal.any([token.signal,AbortSignal.timeout(80_000)]) });
+      if(requests.isCurrent(token))observeQuota(r);
       const data = await readStudioResponse(r,action) as Generation & {questions:Question[]};
       if(!requests.isCurrent(token))return;
       setConfigured(true);
@@ -167,7 +203,8 @@ function Studio({storageKey}:{storageKey:string}) {
     const reviewed=questionsForReview(snapshot);
     const context=makeContext({...snapshot,questions:target.questions,answers:Object.fromEntries(target.questions.map(q=>[q.id,reviewed.answers[q.id]??'']))});
     try{
-      const response=await fetch('/api/studio',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'suggestions',context}),signal:AbortSignal.any([token.signal,AbortSignal.timeout(65_000)])});
+      const response=await fetch('/api/studio',{method:'POST',headers:studioHeaders,body:JSON.stringify({action:'suggestions',context}),signal:AbortSignal.any([token.signal,AbortSignal.timeout(80_000)])});
+      if(requests.isCurrent(token))observeQuota(response);
       const data=await readStudioResponse(response,'suggestions');if(!requests.isCurrent(token))return;
       applySuggestions(snapshot,target,data.suggestions);
       setProjects(all=>all.map(item=>item.id===snapshot.id&&suggestionTarget(item)?.key===target.key?applySuggestions(item,target,data.suggestions):item));
@@ -187,7 +224,8 @@ function Studio({storageKey}:{storageKey:string}) {
     const snapshot=p;setError('');setReviewStep(null);setNavigationEditable(false);setBusy('evaluate');
     const token=requests.begin();
     try{
-      const response=await fetch('/api/studio',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'evaluate',context:makeContext(snapshot)}),signal:AbortSignal.any([token.signal,AbortSignal.timeout(65_000)])});
+      const response=await fetch('/api/studio',{method:'POST',headers:studioHeaders,body:JSON.stringify({action:'evaluate',context:makeContext(snapshot)}),signal:AbortSignal.any([token.signal,AbortSignal.timeout(80_000)])});
+      if(requests.isCurrent(token))observeQuota(response);
       const data=await readStudioResponse(response,'evaluate');
       if(!requests.isCurrent(token))return;
       setProjects(all=>all.map(item=>item.id===snapshot.id?attachAssessment(item,data):item));
@@ -267,6 +305,7 @@ function Studio({storageKey}:{storageKey:string}) {
   const step = !p || p.stage === 'setup' ? 0 : p.stage === 'questions' || p.stage === 'refine' ? 1 : p.status === 'completed' ? 3 : 2;
 
   return <div className="app-shell">
+    {quotaNotice&&quota&&<QuotaNotice kind={quotaNotice} quota={quota} onClose={()=>setQuotaNotice(null)}/>}
     <aside className={`sidebar ${mobileNav ? 'is-open' : ''}`}>
       <a className="brand" href="#" onClick={e => { e.preventDefault(); newProject(); }} aria-label="问形首页"><span className="brand-icon"><Layers size={23}/></span><span>问形<span className="brand-en">PROMPT STUDIO</span></span></a>
       <button className="new-button" onClick={newProject} disabled={!!busy||referenceBusy}><Plus size={18}/> 新建提示词 <span>↗</span></button>
@@ -284,7 +323,7 @@ function Studio({storageKey}:{storageKey:string}) {
       <div className="sidebar-bottom"><div className="small-tip"><span className="tip-icon"><Lightbulb size={18}/></span><strong>不必一次想清楚</strong><p>先说一个想法，剩下的<br/>我们一起慢慢完善。</p><span className="tip-spark">✧</span></div><button className="guide-button" onClick={() => setModal('help')}><CircleHelp size={17}/> 使用指南 <ArrowUpRight size={15}/></button><div className="local-profile"><span className="avatar">你</span><div>我的工作空间<small><span className="green-dot"/> {storageError ? '请手动保存内容' : '本地自动保存'}</small></div><ShieldCheck size={16}/></div></div>
     </aside>
     {mobileNav && <button className="mobile-scrim" aria-label="关闭项目栏" onClick={() => setMobileNav(false)}/>}
-    <div className="main-shell"><header className="topbar"><div className="breadcrumb"><button className="mobile-menu" onClick={() => setMobileNav(!mobileNav)} aria-label="打开项目栏"><Layers size={21}/></button><span>工作空间</span><span className="slash">/</span><strong>提示词工作室</strong></div><div className="top-actions">{busy&&busy!=='import'&&<button className="activity-button" onClick={()=>setReviewStep(null)} aria-label="查看正在进行的生成任务"><LoaderCircle size={15} className="spin"/><span>{busy==='questions'?'正在提问':busy==='evaluate'?'正在评估':busy==='suggestions'?'正在补齐建议':'正在生成'}</span></button>}<AccountPanel disabled={!!busy||referenceBusy||writeBlocked||!ready} workspace={workspace} onImport={importWorkspace} onCloudBusy={setReferenceBusy}/><span className="private-label"><ShieldCheck size={13}/> 私有工作空间</span><button className="model-button" onClick={() => setModal('settings')}><span className={configured ? 'green-dot' : 'amber-dot'}/> 问形 <ChevronDown size={13}/></button></div></header>
+    <div className="main-shell"><header className="topbar"><div className="breadcrumb"><button className="mobile-menu" onClick={() => setMobileNav(!mobileNav)} aria-label="打开项目栏"><Layers size={21}/></button><span>工作空间</span><span className="slash">/</span><strong>提示词工作室</strong></div><div className="top-actions">{quota&&<span className={"quota-badge"+(quota.remaining<=3?" low":"")} aria-live="polite">今日剩余 {quota.remaining} / 7 次</span>}{busy&&busy!=='import'&&<button className="activity-button" onClick={()=>setReviewStep(null)} aria-label="查看正在进行的生成任务"><LoaderCircle size={15} className="spin"/><span>{busy==='questions'?'正在提问':busy==='evaluate'?'正在评估':busy==='suggestions'?'正在补齐建议':'正在生成'}</span></button>}<AccountPanel disabled={!!busy||referenceBusy||writeBlocked||!ready} workspace={workspace} onImport={importWorkspace} onCloudBusy={setReferenceBusy} localSaveWarning={storageError} onBackup={backupWorkspace}/><span className="private-label"><ShieldCheck size={13}/> 私有工作空间</span><button className="model-button" onClick={() => setModal('settings')}><span className={configured ? 'green-dot' : 'amber-dot'}/> 问形 <ChevronDown size={13}/></button></div></header>
       <main><div className="page-top"><span className="eyebrow"><span/> FROM IDEA TO PROMPT</span><button className="text-button" onClick={() => setModal('help')}><CircleHelp size={15}/> 如何使用</button></div>
         <div className="hero"><div><div className="hero-kicker">让好想法，有更好的表达</div><h1>{p?.status === 'completed' ? <>想法就绪，<span>去创造吧。</span></> : p?.stage === 'setup' || !p ? <>从一个想法，<br className="mobile-break"/>到<span>一条好提示词。</span></> : p.stage === 'questions' ? <>好问题，让方向<span>更清晰。</span></> : p.stage === 'refine' ? <>再近一步，<span>更像你想的。</span></> : <>你的想法，<span>已经有了形状。</span></>}</h1><p>{p?.status === 'completed' ? '复制到你喜欢的 AI 工具，开始下一步创作。' : p?.stage === 'setup' || !p ? '不需要学习复杂的技巧。回答几个简单问题，让 AI 帮你把需求表达清楚。' : p.stage === 'questions' ? '不用想得很完美，按你的直觉回答。不确定的部分，我们会帮你标出来。' : p.stage === 'refine' ? '告诉我们哪里还不够好，再补充一些细节，让下一版更贴近你的期待。' : '先读一读，也可以直接修改。满意就完成，还差一点就继续打磨。'}</p></div><div className="hero-art" aria-hidden="true"><div className="art-orbit"/><div className="art-card back"/><div className="art-card front"><Sparkles size={26}/><span/><span/><span/></div><i className="spark-one">✦</i><i className="spark-two">✧</i></div></div>
         <nav className="steps" aria-label="创建进度">{stepLabels.map((label,i)=><div className={`step ${(reviewStep??step)===i?'current':step>i?'passed':''}`} key={label}><button className="step-button" aria-current={(reviewStep??step)===i?'step':undefined} onClick={()=>openStep(i as Step)} disabled={!ready||busy==='import'}><span className="step-number">{step>i?<Check size={13}/>: `0${i+1}`}</span><span>{label}</span></button>{i<3&&<span className="step-line"/>}</div>)}</nav>
@@ -307,15 +346,33 @@ function Studio({storageKey}:{storageKey:string}) {
           {p.versions.length>0&&<ProjectInsights key={p.id} project={p} onChange={next=>setProjects(all=>all.map(item=>item.id===p.id?next:item))} onEvaluate={evaluate} onRefine={text=>{update({status:'draft',stage:'refine',feedback:[p.feedback,text].filter(Boolean).join('\n').slice(0,4000)});toast('建议已带入反馈，请确认后继续细化');}}/>}
         </fieldset>}
         {busy && <div className="busy-indicator" role="status"><LoaderCircle size={18} className="spin"/><div><strong>{busy === 'import' ? '正在恢复工作区…' : busy === 'questions' ? '正在想下一组好问题…' : busy==='evaluate'?'正在检查当前稿与需求…':busy==='suggestions'?'正在为原问题补齐建议选项…':'正在把你的想法写成提示词…'}</strong><span>问形 正在处理，请稍候。输入已保留。</span></div>{busy!=='import'&&<button className="secondary" onClick={cancelRequest}><ArrowLeft size={15}/> 停止等待，返回修改</button>}</div>}
-        <footer className="page-footer"><span>每一个好结果，都始于一个好问题。</span><span><Sparkles size={12}/> 由 问形 驱动</span></footer>
+        <footer className="page-footer"><span>每账号每天20次模型请求 · 至少间隔10秒</span><a href="/help/" target="_blank" rel="noopener noreferrer">使用帮助与提示词教程</a></footer>
       </main>
     </div>
     {notice && <div className="toast" role="status"><Check size={16}/>{notice}</div>}
     {modal && <div className="modal-backdrop" onClick={e => { if (e.target === e.currentTarget) setModal(null); }}><div className="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title" ref={modalRef}><button className="modal-close icon-button" aria-label="关闭对话框" onClick={() => setModal(null)}><X size={19}/></button>
-      {modal==='favorites'&&<FavoriteLibrary library={library} disabled={!!busy||referenceBusy||writeBlocked} onCopy={entry=>void copyFavorite(entry)} onReuse={useFavorite} onRemove={entry=>{changeLibrary(removeFavorite(libraryRef.current,entry.id));toast('已移出常用，使用记录保留');}} onClear={()=>{changeLibrary(libraryRef.current.filter(x=>x.saved));toast('已清除未收藏记录，已收藏提示词保留');}}/>}
+      {modal==='favorites'&&<FavoriteLibrary library={library} disabled={!!busy||referenceBusy||writeBlocked} onAdd={prompt=>{
+        if(busy||referenceBusy||writeBlocked)return false;
+        try{
+          if(libraryRef.current.some(entry=>entry.saved&&entry.prompt===promptIdentity(prompt))){
+            toast('这条提示词已在常用列表中');
+            return false;
+          }
+          changeLibrary(saveFavorite(libraryRef.current,{prompt,title:prompt.trim().split(/\r?\n/,1)[0],type:'custom'}));
+          toast('已加入常用提示词');
+          return true;
+        }catch(error){toast((error as Error).message);return false;}
+      }} onCopy={entry=>void copyFavorite(entry)} onReuse={useFavorite} onRemove={entry=>{changeLibrary(removeFavorite(libraryRef.current,entry.id));toast('已移出常用，使用记录保留');}} onClear={()=>{changeLibrary(libraryRef.current.filter(x=>x.saved));toast('已清除未收藏记录，已收藏提示词保留');}}/>}
       {modal==='favoriteSuggestion'&&suggestedPrompt&&<><span className="modal-symbol"><Star size={24}/></span><h2 id="modal-title">要加入常用提示词吗？</h2><p>这份提示词已在4个不同项目中被使用。加入常用，下次更容易找到。</p><div className="favorite-suggestion"><strong>{suggestedPrompt.title}</strong><pre>{suggestedPrompt.prompt}</pre></div><div className="modal-actions"><button className="secondary" disabled={writeBlocked} onClick={()=>{changeLibrary(dismissFavorite(libraryRef.current,suggestionId));setModal(null);}}>不再提醒此提示词</button><button className="primary" disabled={writeBlocked} onClick={()=>addFavorite(suggestedPrompt)}><Star size={15}/>加入常用</button></div></>}
-      {modal === 'settings' && <><span className="modal-symbol"><SlidersHorizontal size={24}/></span><h2 id="modal-title">问形服务</h2><p className="connection-state"><span className={configured ? 'green-dot' : 'amber-dot'}/>{configured === true ? '问形服务已配置' : configured === false ? '问形服务尚未配置' : '暂时无法确认问形服务状态'}</p><p>问形会通过简单问答，帮助你把想法整理成清晰、具体的提示词。</p><p className="muted">项目保存在当前浏览器。每轮提问与生成会通过问形调用模型服务处理需求；请及时下载重要结果。</p><div className="row-actions"><button className="secondary" onClick={backupWorkspace}>下载工作区备份</button></div><BackupImport disabled={!!busy||writeBlocked} onImport={importWorkspace}/><button className="primary full" onClick={() => setModal(null)}>继续创作 <ArrowRight size={15}/></button></>}
-      {modal === 'help' && <><span className="modal-symbol"><Sparkles size={24}/></span><h2 id="modal-title">从想法到好提示词</h2>{[['选一个方向','代码、图片、视频、文案，或自定义任务。新手选轻松入门，熟悉 AI 可以选择进阶创作。'],['回答几个问题','可以选择“不确定”，但建议至少说明用途、主体或关键内容。多项不确定时可能需要补充后才能得到具体结果。'],['预览，再打磨','直接修改初稿，或点击继续优化。每次保留旧版，直到你觉得满意。'],['带走你的提示词','点击完成，复制或下载到喜欢的 AI 工具里。随时可以重新打开优化。']].map(([title,description],i) => <div className="help-step" key={title}><b>0{i+1}</b><div><strong>{title}</strong><p>{description}</p></div></div>)}<p className="muted">无需注册应用账号。项目仅保存在本浏览器，清理浏览器数据会删除记录。重要结果请下载保存。</p><button className="primary full" onClick={() => setModal(null)}>开始探索 <ArrowRight size={16}/></button></>}
+      {modal === 'settings' && <><span className="modal-symbol"><SlidersHorizontal size={24}/></span><h2 id="modal-title">问形服务</h2><p className="connection-state"><span className={configured ? 'green-dot' : 'amber-dot'}/>{configured === true ? '问形服务已配置' : configured === false ? '问形服务尚未配置' : '暂时无法确认问形服务状态'}</p><p>问形会通过简单问答，帮助你把想法整理成清晰、具体的提示词。</p><p className="muted">项目保存在当前浏览器。每轮提问与生成会通过问形调用模型服务处理需求；请及时下载重要结果。</p><div className="row-actions"><button className="secondary" onClick={backupWorkspace}>下载工作区备份</button></div><BackupImport blockedReason={writeBlocked?storageError:busy||referenceBusy?'当前操作结束后即可导入备份。':undefined} onImport={importWorkspace}/>
+      {hasLegacyWorkspace&&<button className="secondary" disabled={!!busy||referenceBusy||writeBlocked} onClick={async()=>{
+        try {
+          const raw=localStorage.getItem(accountStorageKey(null));
+          if(raw)await importWorkspace(readBackup(raw));
+        } catch(error) { toast(requestFailureMessage(error)); }
+      }}>合并此浏览器的旧访客项目</button>}
+      <button className="primary full" onClick={() => setModal(null)}>继续创作 <ArrowRight size={15}/></button></>}
+      {modal === 'help' && <><span className="modal-symbol"><Sparkles size={24}/></span><h2 id="modal-title">从想法到好提示词</h2>{[['选一个方向','代码、图片、视频、文案，或自定义任务。新手选轻松入门，熟悉 AI 可以选择进阶创作。'],['回答几个问题','可以选择“不确定”，但建议至少说明用途、主体或关键内容。多项不确定时可能需要补充后才能得到具体结果。'],['预览，再打磨','直接修改初稿，或点击继续优化。每次保留旧版，直到你觉得满意。'],['带走你的提示词','点击完成，复制或下载到喜欢的 AI 工具里。随时可以重新打开优化。']].map(([title,description],i) => <div className="help-step" key={title}><b>0{i+1}</b><div><strong>{title}</strong><p>{description}</p></div></div>)}<p className="muted">注册并验证邮箱后即可使用。项目自动保存在本浏览器；跨设备前请在“我的账号”保存到云端，也可以下载备份。</p><button className="primary full" onClick={() => setModal(null)}>开始探索 <ArrowRight size={16}/></button></>}
       {modal === 'delete' && <><span className="modal-symbol danger"><Trash2 size={24}/></span><h2 id="modal-title">删除这个项目？</h2><p>项目「{projects.find(x => x.id === deleteId)?.goal || '未命名想法'}」及所有历史版本都将被删除，无法恢复。</p><div className="modal-actions"><button className="secondary" onClick={() => setModal(null)}>保留项目</button><button className="danger-button" onClick={removeProject}>确认删除</button></div></>}
       {modal === 'reask' && <><span className="modal-symbol"><RotateCcw size={24}/></span><h2 id="modal-title">重新梳理这一轮问题？</h2><p>新问题生成成功后，会替换这一轮的问题和未提交的答案。你的提示词、版本历史和补充说明会保留；生成失败也不会清空已有输入。</p><div className="modal-actions"><button className="secondary" onClick={() => setModal(null)}>保留原有问答</button><button className="primary" onClick={() => { setModal(null); request('questions', true); }}>确认重新提问</button></div></>}
       {modal === 'versions' && <><span className="modal-symbol"><History size={24}/></span><h2 id="modal-title">每一次，都更进一步</h2><p>恢复会新增一个版本，不会覆盖已有历史。</p><div className="version-list">{p?.versions.map((v, i) => <div key={v.id}><div><strong>版本 {i + 1} {i === p.versions.length - 1 && <span className="pill">当前</span>}</strong><small>{new Date(v.createdAt).toLocaleString('zh-CN', { hour12: false })}</small><p>{v.label || v.summary}</p><details><summary>查看此版本提示词</summary><pre>{i === p.versions.length - 1 ? p.draft : v.prompt}</pre></details></div>{i < p.versions.length - 1 && <button className="secondary" onClick={() => { const next = restoreVersion(p, v.id); setProjects(all => all.map(x => x.id === p.id ? next : x)); setModal(null); setError(''); toast('已恢复为新的当前版本'); }}><RotateCcw size={14}/> 恢复</button>}</div>)}</div></>}

@@ -10,7 +10,7 @@ const out=resolve(project,'dist-pages');
 if(relative(project,out).split(sep).includes('..')||relative(project,out)!=='dist-pages')throw Error('Invalid output directory');
 await viteBuild({configFile:false,root:resolve(project,'deployment/pages/client'),publicDir:resolve(project,'public'),plugins:[react()],resolve:{alias:{'@':project}},css:{postcss:project},build:{outDir:out,emptyOutDir:true,sourcemap:false}});
 await bundle({entryPoints:[resolve(project,'deployment/pages/worker.ts')],outfile:resolve(out,'_worker.js'),bundle:true,format:'esm',platform:'browser',target:'es2022',minify:true,sourcemap:false,legalComments:'inline'});
-await writeFile(resolve(out,'_routes.json'),JSON.stringify({version:1,include:['/*'],exclude:[]},null,2));
+await writeFile(resolve(out,'_routes.json'),JSON.stringify({version:1,include:['/*'],exclude:['/robots.txt','/sitemap.xml']},null,2));
 const files=[];
 async function walk(dir){for(const item of await readdir(dir,{withFileTypes:true})){const path=resolve(dir,item.name);if(item.isDirectory())await walk(path);else files.push(path);}}
 await walk(out);
