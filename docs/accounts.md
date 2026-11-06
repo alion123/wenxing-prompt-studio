@@ -9,6 +9,7 @@
    - `supabase/migrations/20261104_usage_stats.sql`
    - `supabase/migrations/20261105_generation_budget.sql`
    - `supabase/migrations/20261105_daily_seven_requests.sql`
+   - `supabase/migrations/20261106_admin_dashboard.sql`
 2. Cloudflare Pages 生产环境配置 `SUPABASE_URL` 和 `SUPABASE_PUBLISHABLE_KEY`，后者仅用 publishable 或旧版 anon key；绝对不要填写 secret/service_role key。`DEEPSEEK_API_KEY` 作为服务端机密保留。
 3. Supabase Authentication → URL Configuration：Site URL 设置为正式站点，Redirect URLs 加入对应邮件跳转地址。换域名时同步修改，开发/预览域名需单独允许。
 4. Authentication → Emails 配置自定义 SMTP，启用邮箱确认。使用发信服务提供的域名校验记录，完成 SPF/DKIM/DMARC。不要在源码或聊天中公开 SMTP 密钥。邮件是否进入收件箱由收件方判定，不能保证不被分入垃圾邮件。
@@ -35,3 +36,11 @@
 运行 `npm test`、`npm run typecheck`、`npm run build:pages`。管理员可运行 `supabase/isolation-test.sql` 验证隔离和版本冲突，运行 `supabase/daily-quota-test.sql` 验证第4/7/8次、北京时间恢复、全站保护及权限。两个脚本在事务中操作临时测试数据并回滚，不调用模型或发信；应在明确授权的项目中运行。
 
 隔离浏览器验证见 `tests/browser/README.md`。网络桩测试不能代替真实邮箱投递测试。
+
+## 管理员后台
+
+只有数据库 `auth.users.raw_app_meta_data.wenxing_admin` 为布尔 true 且邮箱已验证的账号可查看。在“我的账号 → 查看注册账号与用量明细”打开，支持邮箱/ID搜索、每页20条、注册/验证/角色/登录/活跃/今日额度和云端保存时间，以及最近30天请求总数。不包含密码、认证令牌、提示词或工作区正文。
+
+管理员标记必须由可信项目管理员在服务端设置；用户可修改的 user_metadata 不具有授权作用。普通用户直接调用后台RPC也会被拒绝。管理员目前同样受每天7次模型请求限制；后台查询和查看自己的次数不扣模型额度。旧问题补齐建议改为主动点击，并明确说明消耗1次，不再自动调用。
+
+`supabase/admin-dashboard-test.sql` 在事务回滚中检查权限、分页和只读次数查询；在线人数按最近两分钟心跳估算，请求数为预留次数而非成功生成数量。

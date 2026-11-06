@@ -8,3 +8,5 @@
 - `daily-quota.mjs` 导出 `testDailyQuota`：验证剩余3次提醒、避免重复提醒、用尽通知、剩余次数展示和已有项目保留。
 
 在独立浏览器上下文中调用测试函数，例如 `await testDailyQuota({page,expect})`；可传入正式站点 `baseUrl` 验证已发布前端。测试拦截身份和模型请求，不发真实邮件，不消耗真实模型次数。不要与用户正在操作的页面共用上下文。数据库额度原子性由 `supabase/daily-quota-test.sql` 另行验证。
+
+- `admin-dashboard.mjs` 导出 `testAdminDashboard`：验证管理员账号列表、搜索、手机布局、选择框边界及不扣次数的额度读取。

@@ -1,6 +1,7 @@
 'use client';
 import {useEffect,useRef,useState,type FormEvent} from 'react';
 import {X,UserRound,LoaderCircle} from 'lucide-react';
+import {AdminDashboard} from './AdminDashboard';
 import {useAccount} from './AccountSession';
 import {readBackup,type Workspace} from '@/lib/backup';
 import {CloudRevision,canAutoRestoreWorkspace} from '@/lib/account-workspace';
@@ -53,6 +54,8 @@ export function AccountPanel({disabled,workspace,onImport,onCloudBusy,localSaveW
       }catch{if(live.current)setCloudNotice('本地内容仍在；云端暂时无法检查，可在「我的账号」重试或下载备份。');}
     })();
   },[client,accountId,required,disabled,workspace,revision]);
+  const [adminOpen,setAdminOpen]=useState(false);
+  const [statsError,setStatsError]=useState('');
   const [stats,setStats]=useState<{registered:number;verified:number;today:number;online:number}|null>(null);
   useEffect(()=>{
     if(!client||!accountId||required||recovery)return;
@@ -68,12 +71,12 @@ export function AccountPanel({disabled,workspace,onImport,onCloudBusy,localSaveW
     };
   },[client,accountId,required,recovery]);
   useEffect(()=>{
-    setStats(null);
+    setStats(null);setStatsError('');
     if(!client||!accountId||!open||switching||recovery)return;
     let live=true;
     const refresh=()=>{
       void client.rpc('wenxing_usage_stats').then(({data,error})=>{
-        if(live&&!error)setStats(data);
+        if(live){if(error)setStatsError('管理员状态暂时无法检查，请重新打开账号窗口重试。');else {setStats(data);setStatsError('');}}
       });
     };
     refresh();
@@ -211,7 +214,7 @@ export function AccountPanel({disabled,workspace,onImport,onCloudBusy,localSaveW
     setInfo('云端工作区已合并到本地，可以保存。');
   }
   return <>{!required&&<><button ref={trigger} className="model-button account-trigger" disabled={working} onClick={()=>{resetSwitch();setOpen(true);}}><UserRound size={15}/><span>{session?'我的账号':'登录 / 注册'}</span></button><button className="workspace-sync-notice" disabled={working} onClick={()=>{resetSwitch();setOpen(true);}}>{cloudNotice}</button></>}
-    {show&&<div className="modal-backdrop account-backdrop"><div ref={modalRef} className="modal account-modal" role="dialog" aria-modal="true" aria-labelledby="account-title" tabIndex={-1}>
+    {show&&<div className="modal-backdrop account-backdrop"><div ref={modalRef} className={"modal account-modal"+(adminOpen?" admin-expanded":"")} role="dialog" aria-modal="true" aria-labelledby="account-title" tabIndex={-1}>
       {!recovery&&!required&&<button className="modal-close" aria-label="关闭账号窗口" disabled={working} onClick={()=>{setOpen(false);resetSwitch();}}><X size={20}/></button>}
       <h2 id="account-title">{recovery?'设置新密码':session&&!required&&!switching?'我的账号':mode==='register'?'注册账号':mode==='reset'?'找回密码':mode==='resend'?'重发验证邮件':switching?'切换账号':'登录问形'}</h2>
       {!client?<p>账号服务尚未配置，请稍后重试。</p>:<>
@@ -220,7 +223,7 @@ export function AccountPanel({disabled,workspace,onImport,onCloudBusy,localSaveW
         <p>注册账号 {stats.registered} · 已验证 {stats.verified}</p>
         <p>今日使用 {stats.today} · 当前在线约 {stats.online}</p>
         <p className="muted">今日按北京时间计算。在线人数按最近两分钟有活动心跳的账号去重。</p>
-      </section>}<p>当前账号使用独立的本地工作区。空白工作区会尝试恢复云端项目；后续修改请手动保存到云端。</p>
+      <button type="button" className="secondary" onClick={()=>setAdminOpen(v=>!v)}>{adminOpen?'收起管理后台':'查看注册账号与用量明细'}</button></section>}{stats&&adminOpen&&<AdminDashboard/>}{statsError&&<p role="status">{statsError}</p>}<p>当前账号使用独立的本地工作区。空白工作区会尝试恢复云端项目；后续修改请手动保存到云端。</p>
         <section className="account-cloud">
           <h3>云端工作区</h3>
           <p>先检查云端。已有项目时，确认合并后即可保存当前工作区。</p>

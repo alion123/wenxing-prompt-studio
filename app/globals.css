@@ -69,3 +69,18 @@
 .workspace-sync-notice{max-width:260px;padding:8px 10px;border:1px solid #ded5ef;border-radius:8px;background:#faf8ff;color:#645379;font-size:13px;line-height:1.6;text-align:left;cursor:pointer}
 .quota-badge{font-size:14px;color:#645379;white-space:nowrap}.quota-badge.low{font-weight:600;color:#94652a}.quota-backdrop{z-index:120}.quota-modal{max-width:540px;max-height:90dvh;overflow:auto;text-align:left}.quota-modal p{font-size:16px;line-height:1.8;margin:14px 0}.quota-modal .primary{margin-top:24px}
 @media(max-width:900px){.topbar{height:auto;min-height:76px;gap:12px;flex-wrap:wrap;padding-top:12px;padding-bottom:12px}.top-actions{flex-wrap:wrap;justify-content:flex-end}.workspace-sync-notice{max-width:100%;flex-basis:100%;font-size:14px}}
+
+/* Clear choice boundaries at every viewport, including unselected controls. */
+.type-card,.mode-picker button,.answer-options button,.review-option{border:1px solid #b9adc9;box-shadow:0 1px 3px #302c3e08;min-height:44px}
+.type-card{background:#fff}.type-card.active,.mode-picker button.active,.answer-options button.chosen{border:2px solid #7861d3;background:#f0eafb;color:#51348b}
+.answer-options button{color:#604d72;padding:10px 14px;font-size:15px;line-height:1.6;text-align:left}
+.mode-picker button{color:#645379;background:#fff}.type-card strong{font-size:16px}.type-card p,.mode-picker small{font-size:13px;white-space:normal}
+.question-block>label{font-size:16px}.question-block>p,.page-footer{font-size:14px}.question-block textarea{font-size:16px}
+.quota-error{font-size:13px;color:#976024}.account-modal.admin-expanded{max-width:1150px;width:min(1150px,95vw)}
+.admin-dashboard{margin:20px 0;padding:20px;border:1px solid #d4c7e7;border-radius:12px;background:#fcfaff}.admin-dashboard h3{font-size:21px}.admin-dashboard p{font-size:14px;line-height:1.8;margin:12px 0}
+.admin-search{display:flex;align-items:center;flex-wrap:wrap;gap:10px;margin:20px 0}.admin-search label{flex-basis:100%;font-weight:600}.admin-search input{flex:1;min-width:180px;padding:12px;border:1px solid #b9adc9;border-radius:8px;font-size:16px}
+.admin-metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(125px,1fr));gap:12px}.admin-metrics>div{padding:14px;background:white;border:1px solid #ddd1eb;border-radius:9px}.admin-metrics span{display:block;font-size:14px}.admin-metrics strong{display:block;font-size:25px;margin-top:8px}
+.admin-table-scroll{max-width:100%;overflow:auto;margin:18px 0;border:1px solid #d9cde7;border-radius:8px}.admin-dashboard table{width:100%;border-collapse:collapse;font-size:14px;text-align:left}.admin-dashboard caption{text-align:left;padding:14px;font-weight:600}.admin-dashboard th,.admin-dashboard td{padding:12px;border-bottom:1px solid #e1d7ec;vertical-align:top;min-width:105px}.admin-dashboard th{background:#f0eafb}.admin-dashboard small{display:block;font-size:12px;margin-top:7px;overflow-wrap:anywhere}.admin-dashboard .row-actions{flex-wrap:wrap;align-items:center}.admin-dashboard details{margin-top:24px}.admin-dashboard summary{cursor:pointer;min-height:44px}
+@media(max-width:720px){.admin-dashboard{padding:12px}.type-grid{gap:10px}.type-card strong{font-size:15px}.type-card p{font-size:12px}.answer-options button{font-size:15px}.account-modal.admin-expanded{padding:20px!important}.admin-search .secondary{flex:1}.quota-badge{font-size:14px}}
+
+.admin-dashboard .secondary{font-size:15px;min-height:44px}.admin-dashboard .row-actions span{font-size:14px}
