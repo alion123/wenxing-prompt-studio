@@ -6,6 +6,7 @@ import {useAccount} from './AccountSession';
 import {readBackup,type Workspace} from '@/lib/backup';
 import {CloudRevision,canAutoRestoreWorkspace} from '@/lib/account-workspace';
 import {EmailSendCooldown,accountErrorMessage as message} from '@/lib/auth-email';
+import {PASSWORD_RULE,newPasswordError,passwordChecks} from '@/lib/password-policy';
 
 function verificationNotice(email:string){
   return `请在 ${email} 查收主题为「验证你的问形账号」的邮件，点击邮件里的按钮完成验证。收件箱里没有时，请检查垃圾邮件。`;
@@ -133,6 +134,10 @@ export function AccountPanel({disabled,workspace,onImport,onCloudBusy,localSaveW
   }
   async function auth(event:FormEvent){
     event.preventDefault();if(!client)return;
+    if(recovery||mode==='register'){
+      const error=newPasswordError(password);
+      if(error){setError(error);modalRef.current?.querySelector<HTMLInputElement>('#account-password')?.focus();return;}
+    }
     if((recovery||mode==='register')&&password!==confirmPassword){
       setError('两次输入的密码不一致，请重新确认。');
       modalRef.current?.querySelector<HTMLInputElement>('#account-password-confirm')?.focus();
@@ -246,7 +251,8 @@ export function AccountPanel({disabled,workspace,onImport,onCloudBusy,localSaveW
           {localSaveWarning&&<><p role="status">{localSaveWarning}</p><button type="button" className="secondary" disabled={working} onClick={onBackup}>下载当前工作区备份</button></>}
         </>}
         {!recovery&&<><label htmlFor="account-email">邮箱</label><input id="account-email" type="email" autoComplete="email" required value={email} disabled={working} onChange={e=>setEmail(e.target.value)}/></>}
-        {(recovery||(mode==='login'||mode==='register'))&&<><label htmlFor="account-password">{recovery?'新密码':'密码（至少8位）'}</label><input id="account-password" type="password" autoComplete={mode==='login'&&!recovery?'current-password':'new-password'} required minLength={8} value={password} disabled={working} onChange={e=>setPassword(e.target.value)}/></>}
+        {(recovery||(mode==='login'||mode==='register'))&&<><label htmlFor="account-password">{recovery?'新密码':'密码（至少8位）'}</label><input id="account-password" type="password" autoComplete={mode==='login'&&!recovery?'current-password':'new-password'} required minLength={recovery||mode==='register'?8:undefined} value={password} disabled={working} aria-describedby={recovery||mode==='register'?'password-rules':undefined} onChange={e=>setPassword(e.target.value)}/></>}
+        {(recovery||mode==='register')&&<div id="password-rules" className="password-rules"><p>新密码要求：{PASSWORD_RULE}。</p><ul>{passwordChecks(password).map(rule=><li key={rule.label} className={rule.ok?'met':''}><span aria-hidden="true">{rule.ok?'✓':'○'}</span> {rule.label}<span className="sr-only">{rule.ok?'，已满足':'，尚未满足'}</span></li>)}</ul></div>}
         {(recovery||mode==='register')&&<><label htmlFor="account-password-confirm">确认密码</label><input id="account-password-confirm" type="password" autoComplete="new-password" required minLength={8} value={confirmPassword} disabled={working} aria-invalid={!!error&&password!==confirmPassword} onChange={e=>{setConfirmPassword(e.target.value);if(error)setError('');}}/></>}
         <button className="primary full" disabled={working||remaining>0} type="submit">{working?<><LoaderCircle size={16} className="spin"/> 正在处理…</>:remaining>0?`${remaining} 秒后可重新发送`:recovery?'保存新密码':mode==='register'?'注册并验证邮箱':mode==='reset'?'发送重置邮件':mode==='resend'?'发送验证邮件':switching?'登录并切换':'登录'}</button>
         {mailMode&&<p className="muted">同一邮箱每次发送后需间隔60秒。请使用最新邮件；收件箱没有时检查垃圾邮件，避免连续重发。</p>}

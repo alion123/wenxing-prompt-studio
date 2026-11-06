@@ -12,6 +12,7 @@ export class EmailSendCooldown {
 export function accountErrorMessage(error:unknown):string {
   const code=typeof error==='object'&&error!==null&&'code' in error?String(error.code):'';
   if(code==='invalid_credentials')return '邮箱或密码不正确，请重试。';
+  if(code==='weak_password')return '密码需至少8位，包含大写字母、小写字母、数字和特殊符号（如 ! @ # _）。';
   if(code==='email_not_confirmed')return '请先打开验证邮件完成邮箱验证。没收到邮件时，进入「创建账号」并选择「重发验证邮件」。';
   if(code==='over_email_send_rate_limit')return '站点发信额度暂时用尽，请稍后再试。请勿连续重发；也可检查垃圾邮件中已有的验证邮件。';
   if(code==='over_request_rate_limit')return '操作较频繁，请稍后再试。';

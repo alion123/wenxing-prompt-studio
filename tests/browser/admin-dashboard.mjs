@@ -1,5 +1,6 @@
 export async function testAdminDashboard({page,expect,baseUrl='http://127.0.0.1:5199'}){
  const uid='99999999-0000-4000-8000-000000000008';let isAdmin=true,modelCalls=0;
+ await page.addInitScript(()=>{localStorage.removeItem('sb-admin-fixture-auth-token');localStorage.removeItem('wenxu.studio.v1.account.99999999-0000-4000-8000-000000000008');});
  await page.route(baseUrl+'/api/auth-config',r=>r.fulfill({json:{url:'https://admin-fixture.example.test',publishableKey:'sb_publishable_admin_fixture'}}));
  await page.route(baseUrl+'/api/studio',r=>{modelCalls++;return r.fulfill({status:500,json:{message:'Unexpected model call'}});});
  await page.route('https://admin-fixture.example.test/**',r=>{

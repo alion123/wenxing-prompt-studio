@@ -84,3 +84,14 @@
 @media(max-width:720px){.admin-dashboard{padding:12px}.type-grid{gap:10px}.type-card strong{font-size:15px}.type-card p{font-size:12px}.answer-options button{font-size:15px}.account-modal.admin-expanded{padding:20px!important}.admin-search .secondary{flex:1}.quota-badge{font-size:14px}}
 
 .admin-dashboard .secondary{font-size:15px;min-height:44px}.admin-dashboard .row-actions span{font-size:14px}
+
+.backup-file-box{margin:20px 0;padding:20px;border:2px solid #b4a3d0;border-radius:12px;background:#faf7ff;text-align:left}
+.backup-file-box:focus-within{border-color:#7861d3;box-shadow:0 0 0 3px #7861d31a}
+.backup-file-box .input-label{display:block;margin:0 0 8px;font-size:16px;font-weight:600;color:#4e3c66}
+.backup-file-box p{font-size:15px;line-height:1.8;color:#645379;margin:8px 0;overflow-wrap:anywhere}
+.backup-file-box input[type=file]{display:block;width:100%;max-width:100%;min-height:48px;margin:14px 0;padding:0;color:transparent;font-size:0;cursor:pointer;border:0;background:transparent}
+.backup-file-box input[type=file]::file-selector-button{font:600 16px/1.5 system-ui,"Microsoft YaHei",sans-serif;min-height:46px;padding:10px 20px;border:1px solid #7861d3;border-radius:8px;background:#fff;color:#6045ad;cursor:pointer}
+.backup-file-box input[type=file]:hover::file-selector-button{background:#efe8fc}.backup-file-box input[type=file]:focus-visible{outline:3px solid #7861d3;outline-offset:4px;border-radius:8px}
+.backup-file-box.disabled{opacity:.65}.backup-file-box input:disabled,.backup-file-box input:disabled::file-selector-button{cursor:not-allowed}
+.backup-file-status strong{color:#453456;font-weight:600}.password-rules{padding:14px 16px;border:1px solid #d9ceea;border-radius:9px;background:#faf7ff}.password-rules p{font-size:15px;line-height:1.7;margin:0 0 8px;color:#59496b}.password-rules ul{list-style:none;margin:0;padding:0;display:flex;flex-wrap:wrap;gap:8px 16px}.password-rules li{font-size:14px;color:#74697f;line-height:1.7}.password-rules li.met{color:#327459}
+@media(max-width:600px){.backup-file-box{padding:16px}.backup-file-box input[type=file]::file-selector-button{width:100%}.password-rules ul{display:block}.password-rules li{margin:4px 0}}

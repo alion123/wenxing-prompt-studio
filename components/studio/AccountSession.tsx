@@ -12,6 +12,13 @@ export function AccountSession({children}:{children:(storageKey:string)=>ReactNo
   const [account,setAccount]=useState<{client:SupabaseClient|null;session:Session|null;recovery:boolean}|null>(null);
   const [error,setError]=useState('');
   useEffect(()=>{
+    // Email links may target the already-open tab, changing only its fragment.
+    // Reinitialize the SDK once so it can verify and consume that recovery link.
+    const recoveryLink=()=>{const params=new URLSearchParams(location.hash.slice(1));if(params.get('type')==='recovery'&&params.has('access_token'))location.reload();};
+    window.addEventListener('hashchange',recoveryLink);
+    return()=>window.removeEventListener('hashchange',recoveryLink);
+  },[]);
+  useEffect(()=>{
     let live=true,unsubscribe=()=>{};
     const fail=()=>{if(live){setAccount(null);setError('无法确认账号状态。为保护本地工作区，请刷新重试。');}};
     void(async()=>{

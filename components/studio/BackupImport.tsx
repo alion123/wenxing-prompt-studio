@@ -5,13 +5,14 @@ import {readBackup,type Workspace} from '@/lib/backup';
 export function BackupImport({blockedReason,onImport}:{blockedReason?:string;onImport:(backup:Workspace)=>Promise<void>}){
   const disabled=Boolean(blockedReason);
   const [backup,setBackup]=useState<Workspace|null>(null),[error,setError]=useState(''),[loading,setLoading]=useState(false);
+  const [filename,setFilename]=useState('');
   return <section className="backup-import"><h3>导入工作区备份</h3><p>支持问形及旧版问序导出的JSON，最多10MB。确认后合并项目，已有项目不会被覆盖。</p>
-    <label className="input-label" htmlFor="backup-file">选择备份文件</label><input id="backup-file" type="file" accept=".json,application/json" disabled={disabled||loading} onChange={async e=>{
+    <div className={'backup-file-box'+(disabled?' disabled':'')}><label className="input-label" htmlFor="backup-file">选择备份文件</label><p id="backup-file-help">选择 .json 格式的工作区备份，文件大小不超过10MB。</p><input id="backup-file" type="file" accept=".json,application/json" aria-describedby="backup-file-help backup-file-status" disabled={disabled||loading} onChange={async e=>{
       const file=e.target.files?.[0];e.target.value='';if(!file)return;
-      setBackup(null);setError('');setLoading(true);
+      setBackup(null);setError('');setLoading(true);setFilename(file.name);
       try{if(file.size>10*1024*1024)throw Error('备份超过10MB，请选择较小的文件。');setBackup(readBackup(await file.text()));}
       catch(err){setError(err instanceof Error?err.message:'读取备份失败，现有项目未改变。');}finally{setLoading(false);}
-    }}/>
+    }}/><p id="backup-file-status" className="backup-file-status" role="status">{loading?'正在处理备份…':filename?<><span>已选择：</span><strong>{filename}</strong></>:'尚未选择文件。选择后先预览，确认后才会导入。'}</p></div>
     {error&&<p role="alert" className="insight-error">{error}</p>}
     {backup&&<div className="import-preview"><strong>备份中有 {backup.projects.length} 个项目</strong><p>常用提示词 {backup.library?.filter(x=>x.saved).length??0} 条，使用记录 {backup.library?.length??0} 条。</p><ul>{backup.projects.slice(0,8).map(p=><li key={p.id}>{p.goal||'未命名项目'} · {p.versions.length} 个版本</li>)}</ul>{backup.projects.length>8&&<p>另有 {backup.projects.length-8} 个项目。</p>}<p>完全相同的记录会跳过；编号相同但内容不同的项目保留为独立副本。</p><div className="row-actions"><button className="primary" disabled={disabled||loading} onClick={async()=>{setLoading(true);setError('');try{await onImport(backup);setBackup(null);}catch(err){setError(err instanceof Error?err.message:'导入失败，现有记录未覆盖。');}finally{setLoading(false);}}}>{loading?'正在导入…':'确认合并导入'}</button><button className="text-button" disabled={loading} onClick={()=>setBackup(null)}>取消导入</button></div></div>}
     {blockedReason&&<p role="status">{blockedReason}</p>}

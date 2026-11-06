@@ -14,7 +14,8 @@
 3. Supabase Authentication → URL Configuration：Site URL 设置为正式站点，Redirect URLs 加入对应邮件跳转地址。换域名时同步修改，开发/预览域名需单独允许。
 4. Authentication → Emails 配置自定义 SMTP，启用邮箱确认。使用发信服务提供的域名校验记录，完成 SPF/DKIM/DMARC。不要在源码或聊天中公开 SMTP 密钥。邮件是否进入收件箱由收件方判定，不能保证不被分入垃圾邮件。
 5. 构建并部署；`/api/auth-config` 只能返回项目 URL 和公开 key，不能返回管理员密钥。
-6. 用自己控制的真实邮箱验证注册、重发、登录、找回密码及邮件跳回正式域名。密码至少8位；注册和重设密码需要重复确认。注册提交后原密码在本页内保留，关闭、切换账号或登录成功后清除，不写入工作区或浏览器存储。
+6. Authentication → Sign In / Providers → Email：Minimum password length 设置为8；Password requirements 选择“Lowercase, uppercase letters, digits and symbols”。前端与服务端同时要求至少8位，含大写字母、小写字母、数字及特殊符号（例如 ! @ # _）。既有账号仍可用原密码登录，新注册及重设密码使用新规则。
+7. 用自己控制的真实邮箱验证注册、重发、登录、找回密码及邮件跳回正式域名。注册和重设密码需要重复确认。注册提交后原密码在本页内保留，关闭、切换账号或登录成功后清除，不写入工作区或浏览器存储。弱密码在发信及重发倒计时前拦截。
 
 ## 额度
 
